@@ -220,8 +220,9 @@ app.get('/api/questions', async (req, res) => {
     const result = [];
     for (const q of questions) {
       const votes_a = await db.countVotes(q.id, 'a'); const votes_b = await db.countVotes(q.id, 'b');
+      const votes_c = q.option_c ? await db.countVotes(q.id, 'c') : 0;
       const pred = await db.getPrediction(userId, q.id);
-      result.push({ ...q, auto_check: undefined, votes_a, votes_b, user_answer: pred?.answer || null,
+      result.push({ ...q, auto_check: undefined, votes_a, votes_b, votes_c, user_answer: pred?.answer || null,
         user_was_correct: pred && q.resolved ? pred.answer === q.correct_answer : null });
     }
     res.json({ ok: true, questions: result });
@@ -232,13 +233,16 @@ app.post('/api/predict', async (req, res) => {
   try {
     const { userId, questionId, answer } = req.body;
     if (!userId || !questionId || !answer) return res.status(400).json({ error: 'Missing fields' });
+    if (!['a', 'b', 'c'].includes(answer)) return res.status(400).json({ error: 'Invalid answer' });
     const question = await db.getQuestion(questionId);
     if (!question) return res.status(404).json({ error: 'Question not found' });
+    if (answer === 'c' && !question.option_c) return res.status(400).json({ error: 'No option C for this question' });
     if (question.resolved) return res.status(400).json({ error: 'Already resolved' });
     if (await db.getPrediction(userId, questionId)) return res.status(409).json({ error: 'Already predicted' });
     const user = await db.addPrediction(userId, questionId, answer);
     const votes_a = await db.countVotes(questionId, 'a'); const votes_b = await db.countVotes(questionId, 'b');
-    res.json({ ok: true, question: { ...question, votes_a, votes_b }, user, pointsEarned: 5 });
+    const votes_c = question.option_c ? await db.countVotes(questionId, 'c') : 0;
+    res.json({ ok: true, question: { ...question, votes_a, votes_b, votes_c }, user, pointsEarned: 5 });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -266,7 +270,7 @@ app.post('/api/admin/resolve', async (req, res) => {
   try {
     const { key, questionId, correctAnswer } = req.body;
     if (key !== ADMIN_KEY) return res.status(403).json({ error: 'Invalid admin key' });
-    if (!questionId || !correctAnswer || !['a', 'b'].includes(correctAnswer)) return res.status(400).json({ error: 'Missing/invalid fields' });
+    if (!questionId || !correctAnswer || !['a', 'b', 'c'].includes(correctAnswer)) return res.status(400).json({ error: 'Missing/invalid fields' });
     const result = await db.resolveQuestion(questionId, correctAnswer);
     if (!result.ok) return res.status(400).json({ error: 'Not found or already resolved' });
     res.json({ ok: true, ...result });
@@ -288,10 +292,10 @@ app.get('/api/admin/questions', async (req, res) => {
 
 app.post('/api/admin/question', async (req, res) => {
   try {
-    const { key, text, option_a, option_b, category, timeframe } = req.body;
+    const { key, text, option_a, option_b, option_c, category, timeframe } = req.body;
     if (key !== ADMIN_KEY) return res.status(403).json({ error: 'Invalid admin key' });
     if (!text || !option_a || !option_b) return res.status(400).json({ error: 'Missing fields' });
-    const qId = await db.addQuestion({ text, option_a, option_b, category, timeframe });
+    const qId = await db.addQuestion({ text, option_a, option_b, option_c, category, timeframe });
     res.json({ ok: true, questionId: qId });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

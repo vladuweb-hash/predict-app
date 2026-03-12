@@ -954,9 +954,11 @@ async function loadQuestions() {
 }
 
 function renderQuestion(q) {
-  const total = q.votes_a + q.votes_b;
-  const pctA = total > 0 ? Math.round((q.votes_a / total) * 100) : 50;
-  const pctB = total > 0 ? 100 - pctA : 50;
+  const hasC = !!q.option_c;
+  const total = q.votes_a + q.votes_b + (hasC ? (q.votes_c || 0) : 0);
+  const pctA = total > 0 ? Math.round((q.votes_a / total) * 100) : (hasC ? 33 : 50);
+  const pctB = total > 0 ? Math.round((q.votes_b / total) * 100) : (hasC ? 33 : 50);
+  const pctC = hasC ? (total > 0 ? 100 - pctA - pctB : 34) : 0;
   const voted = !!q.user_answer;
   const cat = categoryNames[q.category] || q.category;
   const tfLabel = tfNames[q.timeframe] || q.timeframe;
@@ -980,21 +982,33 @@ function renderQuestion(q) {
   if (voted) {
     const selA = q.user_answer === 'a';
     const selB = q.user_answer === 'b';
+    const selC = q.user_answer === 'c';
 
     let classA = 'option-btn voted';
     let classB = 'option-btn voted';
+    let classC = 'option-btn voted';
 
     if (selA) classA += ' selected';
     if (selB) classB += ' selected';
+    if (selC) classC += ' selected';
 
     if (q.resolved) {
       if (selA && q.correct_answer === 'a') classA += ' was-correct';
       if (selA && q.correct_answer !== 'a') classA += ' was-wrong';
       if (selB && q.correct_answer === 'b') classB += ' was-correct';
       if (selB && q.correct_answer !== 'b') classB += ' was-wrong';
+      if (selC && q.correct_answer === 'c') classC += ' was-correct';
+      if (selC && q.correct_answer !== 'c') classC += ' was-wrong';
       if (q.correct_answer === 'a' && !selA) classA += ' is-correct-answer';
       if (q.correct_answer === 'b' && !selB) classB += ' is-correct-answer';
+      if (q.correct_answer === 'c' && !selC) classC += ' is-correct-answer';
     }
+
+    const optCHtml = hasC ? `
+          <div class="${classC}">
+            <div class="bar" style="width: ${pctC}%"></div>
+            <div class="label"><span>${q.option_c}</span><span class="percent">${pctC}%</span></div>
+          </div>` : '';
 
     return `
       <div class="${cardClass}">
@@ -1013,6 +1027,7 @@ function renderQuestion(q) {
             <div class="bar" style="width: ${pctB}%"></div>
             <div class="label"><span>${q.option_b}</span><span class="percent">${pctB}%</span></div>
           </div>
+          ${optCHtml}
         </div>
         <div class="card-footer">
           <span>${total} голос${pluralize(total)}</span>
@@ -1020,6 +1035,12 @@ function renderQuestion(q) {
         </div>
       </div>`;
   }
+
+  const btnCHtml = hasC ? `
+        <button class="option-btn" onclick="predict(${q.id}, 'c', this)">
+          <div class="bar" style="width: 0%"></div>
+          <div class="label"><span>${q.option_c}</span></div>
+        </button>` : '';
 
   return `
     <div class="${cardClass}" id="q-${q.id}">
@@ -1037,6 +1058,7 @@ function renderQuestion(q) {
           <div class="bar" style="width: 0%"></div>
           <div class="label"><span>${q.option_b}</span></div>
         </button>
+        ${btnCHtml}
       </div>
     </div>`;
 }

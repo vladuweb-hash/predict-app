@@ -36,6 +36,7 @@ async function initDB() {
       text TEXT NOT NULL,
       option_a TEXT NOT NULL,
       option_b TEXT NOT NULL,
+      option_c TEXT,
       category TEXT DEFAULT 'general',
       timeframe TEXT DEFAULT 'tomorrow',
       is_active BOOLEAN DEFAULT true,
@@ -92,6 +93,12 @@ async function initDB() {
       UNIQUE(room_question_id, user_id)
     );
   `);
+
+  // Migration: add option_c if missing
+  try {
+    await pool.query('ALTER TABLE questions ADD COLUMN IF NOT EXISTS option_c TEXT');
+    await pool.query('ALTER TABLE room_questions ADD COLUMN IF NOT EXISTS option_c TEXT');
+  } catch (e) { /* column already exists */ }
 
   const { rows } = await pool.query('SELECT COUNT(*) as c FROM questions');
   if (parseInt(rows[0].c) === 0) {
@@ -238,11 +245,11 @@ async function getQuestion(id) {
   return rows[0] || null;
 }
 
-async function addQuestion({ text, option_a, option_b, category, timeframe, autoCheck }) {
+async function addQuestion({ text, option_a, option_b, option_c, category, timeframe, autoCheck }) {
   const { rows } = await pool.query(
-    `INSERT INTO questions (text, option_a, option_b, category, timeframe, auto_check)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-    [text, option_a, option_b, category || 'general', timeframe || 'tomorrow', autoCheck ? JSON.stringify(autoCheck) : null]
+    `INSERT INTO questions (text, option_a, option_b, option_c, category, timeframe, auto_check)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+    [text, option_a, option_b, option_c || null, category || 'general', timeframe || 'tomorrow', autoCheck ? JSON.stringify(autoCheck) : null]
   );
   return rows[0].id;
 }

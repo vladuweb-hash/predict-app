@@ -144,7 +144,9 @@ app.post('/api/auth', async (req, res) => {
     if (!user) user = await db.createUser(tgUser, referredBy ? parseInt(referredBy) : null);
     const checkin = await db.checkIn(user.telegram_id);
     user = await db.getUser(user.telegram_id);
-    res.json({ ok: true, user, checkin });
+    let botUsername = '';
+    if (bot) { try { const me = await bot.getMe(); botUsername = me.username; } catch(e) {} }
+    res.json({ ok: true, user, checkin, botUsername });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

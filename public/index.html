@@ -1051,6 +1051,7 @@ const API = '';
 let currentUser = null;
 let currentTimeframe = 'all';
 let checkinData = null;
+let botUsername = '';
 const MILESTONES = [
   { days: 3, reward: 30, label: '3 дня' },
   { days: 7, reward: 100, label: 'Неделя' },
@@ -1109,6 +1110,7 @@ async function auth() {
     if (data.ok) {
       currentUser = data.user;
       checkinData = data.checkin;
+      if (data.botUsername) botUsername = data.botUsername;
       document.getElementById('headerScore').textContent = currentUser.score;
       updateStreakBanner();
       loadQuestions();
@@ -1461,7 +1463,8 @@ function shareInvite() {
   haptic('medium');
   const userId = currentUser?.telegram_id || '';
   const text = 'Проверь свою интуицию в Предскажи!';
-  const url = `https://t.me/share/url?url=${encodeURIComponent(`https://t.me/your_bot?start=${userId}`)}&text=${encodeURIComponent(text)}`;
+  const botName = botUsername || 'your_bot';
+  const url = `https://t.me/share/url?url=${encodeURIComponent(`https://t.me/${botName}?start=${userId}`)}&text=${encodeURIComponent(text)}`;
   window.open(url, '_blank');
 }
 

@@ -1,0 +1,8 @@
+node_modules/
+.env
+predict.db
+*.db
+*.db-shm
+*.db-wal
+data.json
+.cursor/

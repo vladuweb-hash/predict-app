@@ -1,0 +1,26 @@
+databases:
+  - name: predict-db
+    plan: free
+    databaseName: predict_app
+    user: predict_user
+
+services:
+  - type: web
+    name: predict-app
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: predict-db
+          property: connectionString
+      - key: BOT_TOKEN
+        sync: false
+      - key: WEBAPP_URL
+        sync: false
+      - key: ADMIN_KEY
+        sync: false
+      - key: NODE_ENV
+        value: production

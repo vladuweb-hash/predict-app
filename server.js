@@ -300,6 +300,42 @@ app.post('/api/admin/question', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.post('/api/admin/replace-questions', async (req, res) => {
+  try {
+    if (req.body.key !== ADMIN_KEY) return res.status(403).json({ error: 'Invalid admin key' });
+
+    const deactivated = await db.pool.query(
+      `UPDATE questions SET is_active = false WHERE auto_check IS NULL AND resolved = false AND is_active = true`
+    );
+
+    const newQuestions = [
+      ['⚽ Кто победит в ближайшем топ-матче Лиги Чемпионов?', 'Фаворит', 'Андердог', 'Ничья в основное время', 'sport', 'tomorrow'],
+      ['🏀 NBA: фаворит победит в матче дня?', 'Да, уверенно', 'Нет, апсет!', 'Победа с разницей 1–3 очка', 'sport', 'tomorrow'],
+      ['🎬 Какой жанр будет #1 в кинопрокате в эти выходные?', 'Боевик / фантастика', 'Комедия / драма', 'Анимация / мультфильм', 'movies', 'tomorrow'],
+      ['🤖 Выйдет ли завтра громкая новость про ИИ?', 'Да, будет бомба', 'Нет, тихий день', 'Новость будет, но не громкая', 'tech', 'tomorrow'],
+      ['🎵 Какой жанр сейчас #1 в мировом Spotify?', 'Поп', 'Хип-хоп / рэп', 'Латино / другой', 'music', 'tomorrow'],
+      ['📊 S&P 500 завтра закроется в плюсе?', 'Да, зелёный день', 'Нет, красный', 'Почти без изменений (±0.2%)', 'finance', 'week'],
+      ['💎 Кто покажет лучший рост за неделю: Bitcoin или Ethereum?', 'Bitcoin', 'Ethereum', 'Примерно одинаково (±1%)', 'crypto', 'week'],
+      ['🏎 Формула 1: кто возьмёт поул на ближайшем Гран-при?', 'Red Bull', 'Ferrari / McLaren', 'Другая команда — сенсация', 'sport', 'week'],
+      ['📺 Новый эпизод топ-сериала получит на IMDb:', 'Выше 8.5 — шедевр', 'Ниже 7.0 — разочарование', '7.0–8.5 — нормально', 'movies', 'week'],
+      ['🔥 Илон Маск напишет пост с 1M+ лайков на этой неделе?', 'Конечно да', 'Нет, не в этот раз', 'Напишет, но не наберёт 1M', 'tech', 'week'],
+      ['⚽ Сборная России выиграет ближайший матч?', 'Да, победа', 'Нет, проиграют', 'Ничья', 'sport', 'month'],
+      ['🚀 SpaceX совершит успешный запуск в этом месяце?', 'Да, и не один', 'Нет / перенесут', 'Один запуск, но с проблемами', 'tech', 'month'],
+      ['💰 Золото обновит исторический максимум в этом месяце?', 'Да, новый рекорд', 'Нет, не дотянет', 'Подойдёт близко (±1%)', 'finance', 'month'],
+      ['🎮 Выйдет ли игра с оценкой 90+ на Metacritic в этом месяце?', 'Да, будет хит', 'Нет, всё средне', 'Выйдет 85–89 — почти хит', 'tech', 'month'],
+      ['🌍 Главная тема мировых новостей в этом месяце будет:', 'Политика / конфликты', 'Экономика / рынки', 'Технологии / наука / другое', 'general', 'month'],
+    ];
+
+    let added = 0;
+    for (const [text, a, b, c, cat, tf] of newQuestions) {
+      await db.addQuestion({ text, option_a: a, option_b: b, option_c: c, category: cat, timeframe: tf });
+      added++;
+    }
+
+    res.json({ ok: true, deactivated: deactivated.rowCount, added });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/admin/generate', async (req, res) => {
   try {
     if (req.body.key !== ADMIN_KEY) return res.status(403).json({ error: 'Invalid admin key' });

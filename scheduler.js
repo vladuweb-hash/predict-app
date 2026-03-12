@@ -2,6 +2,9 @@ const db = require('./database');
 
 const HOUR = 60 * 60 * 1000;
 
+let _bot = null;
+function setBot(botInstance) { _bot = botInstance; }
+
 async function fetchJSON(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
@@ -299,6 +302,13 @@ async function autoResolveQuestions() {
       if (result.ok) {
         console.log(`  [OK] Q${q.id}: "${q.text.slice(0, 40)}..." → ${answerLabel} | ${result.winnersCount}/${result.totalPredictions} winners`);
         resolved++;
+        await notifyUsersAboutResult(q, correctAnswer, answerLabel, result);
+        if (q.is_featured) {
+          const preds = await db.getPredictionsForQuestion(q.id);
+          for (const p of preds) {
+            if (p.answer === correctAnswer) await db.grantAchievement(p.user_id, 'featured_correct');
+          }
+        }
       }
     } catch (e) { console.error(`  [!] Failed to resolve Q${q.id}:`, e.message); }
     await sleep(1500);
@@ -370,8 +380,74 @@ async function runCycle() {
     await sleep(2000);
     await generateWeeklyQuestions();
     await sleep(2000);
+    await markFeaturedQuestion();
+    await sleep(1000);
     await autoResolveQuestions();
+    await sleep(2000);
+    await sendWeeklySummary();
   } catch (e) { console.error('[Scheduler] Cycle error:', e.message); }
+}
+
+async function notifyUsersAboutResult(question, correctAnswer, answerLabel, result) {
+  if (!_bot) return;
+  try {
+    const preds = await db.getPredictionsForQuestion(question.id);
+    for (const p of preds) {
+      const user = await db.getUser(p.user_id);
+      if (!user || !user.chat_id || !user.notifications) continue;
+      const isCorrect = p.answer === correctAnswer;
+      const emoji = isCorrect ? '🎉' : '😔';
+      const points = isCorrect ? '+25' : '+5';
+      const msg = `${emoji} *Результат:* ${question.text.slice(0, 80)}\n\n` +
+        `✅ Ответ: *${answerLabel}*\n` +
+        `${isCorrect ? '🎯 Ты угадал!' : '❌ В этот раз мимо'} (${points} очков)\n` +
+        `📊 Угадали: ${result.winnersCount} из ${result.totalPredictions}`;
+      try { await _bot.sendMessage(user.chat_id, msg, { parse_mode: 'Markdown' }); } catch (e) { /* user blocked bot */ }
+      await sleep(100);
+    }
+  } catch (e) { console.error('[Notify] Error:', e.message); }
+}
+
+async function sendWeeklySummary() {
+  if (!_bot) return;
+  const today = new Date();
+  if (today.getDay() !== 0) return;
+  console.log('[Scheduler] Sending weekly summaries...');
+  try {
+    const users = await db.getAllUsers();
+    let sent = 0;
+    for (const u of users) {
+      if (!u.chat_id || !u.notifications) continue;
+      const stats = await db.getWeeklyStats(u.telegram_id);
+      if (parseInt(stats.total) === 0) continue;
+      const accuracy = parseInt(stats.total) > 0 ? Math.round(parseInt(stats.correct) / parseInt(stats.total) * 100) : 0;
+      const rank = await db.getUserRank(u.score);
+      const msg = `📊 *Твоя неделя в «Предскажи»*\n\n` +
+        `📝 Прогнозов: ${stats.total}\n` +
+        `🎯 Угадано: ${stats.correct} (${accuracy}%)\n` +
+        `⚡ Заработано: +${stats.points} очков\n` +
+        `🔥 Серия дней: ${u.daily_streak || 0}\n` +
+        `🏆 Рейтинг: #${rank}\n\n` +
+        `Новая неделя — новые прогнозы! 💪`;
+      try { await _bot.sendMessage(u.chat_id, msg, { parse_mode: 'Markdown' }); sent++; } catch (e) { /* blocked */ }
+      await sleep(200);
+    }
+    console.log(`[Scheduler] Sent ${sent} weekly summaries`);
+  } catch (e) { console.error('[Scheduler] Weekly summary error:', e.message); }
+}
+
+async function markFeaturedQuestion() {
+  try {
+    await db.pool.query('UPDATE questions SET is_featured = false WHERE is_featured = true');
+    const { rows } = await db.pool.query(`
+      SELECT id FROM questions WHERE is_active = true AND resolved = false
+      ORDER BY RANDOM() LIMIT 1
+    `);
+    if (rows.length > 0) {
+      await db.pool.query('UPDATE questions SET is_featured = true WHERE id = $1', [rows[0].id]);
+      console.log(`[Scheduler] Featured question: Q${rows[0].id}`);
+    }
+  } catch (e) { console.error('[Scheduler] Featured question error:', e.message); }
 }
 
 function start() {
@@ -386,4 +462,4 @@ async function runOnce() {
   console.log('[Scheduler] Done.');
 }
 
-module.exports = { start, runOnce, generateDailyQuestions, autoResolveQuestions, generateWeeklyQuestions };
+module.exports = { start, runOnce, setBot, generateDailyQuestions, autoResolveQuestions, generateWeeklyQuestions, sendWeeklySummary, markFeaturedQuestion };

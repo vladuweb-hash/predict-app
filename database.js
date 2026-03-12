@@ -94,11 +94,24 @@ async function initDB() {
     );
   `);
 
-  // Migration: add option_c if missing
+  // Migrations
   try {
     await pool.query('ALTER TABLE questions ADD COLUMN IF NOT EXISTS option_c TEXT');
     await pool.query('ALTER TABLE room_questions ADD COLUMN IF NOT EXISTS option_c TEXT');
-  } catch (e) { /* column already exists */ }
+    await pool.query('ALTER TABLE questions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()');
+    await pool.query('ALTER TABLE questions ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ');
+    await pool.query('ALTER TABLE questions ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT false');
+  } catch (e) { /* columns already exist */ }
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS achievements (
+      id SERIAL PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      type TEXT NOT NULL,
+      unlocked_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(user_id, type)
+    )
+  `);
 
   const { rows } = await pool.query('SELECT COUNT(*) as c FROM questions');
   if (parseInt(rows[0].c) === 0) {
@@ -245,11 +258,13 @@ async function getQuestion(id) {
   return rows[0] || null;
 }
 
-async function addQuestion({ text, option_a, option_b, option_c, category, timeframe, autoCheck }) {
+async function addQuestion({ text, option_a, option_b, option_c, category, timeframe, autoCheck, expires_at }) {
+  let expAt = expires_at || null;
+  if (!expAt && autoCheck?.check_after) expAt = autoCheck.check_after;
   const { rows } = await pool.query(
-    `INSERT INTO questions (text, option_a, option_b, option_c, category, timeframe, auto_check)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-    [text, option_a, option_b, option_c || null, category || 'general', timeframe || 'tomorrow', autoCheck ? JSON.stringify(autoCheck) : null]
+    `INSERT INTO questions (text, option_a, option_b, option_c, category, timeframe, auto_check, expires_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+    [text, option_a, option_b, option_c || null, category || 'general', timeframe || 'tomorrow', autoCheck ? JSON.stringify(autoCheck) : null, expAt]
   );
   return rows[0].id;
 }
@@ -483,6 +498,85 @@ async function getRoomLeaderboard(roomId) {
   return result.sort((a, b) => b.score - a.score);
 }
 
+// --- Achievements ---
+
+const ACHIEVEMENT_DEFS = [
+  { type: 'first_prediction', emoji: '🎯', title: 'Первый прогноз', desc: 'Сделай первое предсказание' },
+  { type: 'correct_3', emoji: '🔥', title: 'Горячая серия', desc: '3 верных подряд' },
+  { type: 'correct_5', emoji: '💎', title: 'Бриллиантовый ум', desc: '5 верных подряд' },
+  { type: 'correct_10', emoji: '🧠', title: 'Провидец', desc: '10 верных подряд' },
+  { type: 'total_10', emoji: '📝', title: 'Активный игрок', desc: '10 прогнозов' },
+  { type: 'total_50', emoji: '⚡', title: 'Опытный', desc: '50 прогнозов' },
+  { type: 'total_100', emoji: '👑', title: 'Легенда', desc: '100 прогнозов' },
+  { type: 'streak_3', emoji: '🔥', title: '3 дня подряд', desc: 'Серия 3 дня' },
+  { type: 'streak_7', emoji: '🌟', title: 'Неделя подряд', desc: 'Серия 7 дней' },
+  { type: 'streak_30', emoji: '🏆', title: 'Месяц подряд', desc: 'Серия 30 дней' },
+  { type: 'night_owl', emoji: '🦉', title: 'Ночная сова', desc: 'Прогноз между 00:00–05:00' },
+  { type: 'featured_correct', emoji: '⭐', title: 'Звёздный ответ', desc: 'Угадай вопрос дня' },
+];
+
+async function getAchievements(userId) {
+  const { rows } = await pool.query('SELECT type, unlocked_at FROM achievements WHERE user_id=$1 ORDER BY unlocked_at DESC', [userId]);
+  return rows.map(r => {
+    const def = ACHIEVEMENT_DEFS.find(d => d.type === r.type) || {};
+    return { ...r, ...def };
+  });
+}
+
+async function grantAchievement(userId, type) {
+  try {
+    await pool.query('INSERT INTO achievements (user_id, type) VALUES ($1,$2) ON CONFLICT DO NOTHING', [userId, type]);
+    const { rows } = await pool.query('SELECT * FROM achievements WHERE user_id=$1 AND type=$2', [userId, type]);
+    return rows[0] || null;
+  } catch (e) { return null; }
+}
+
+async function checkAndGrantAchievements(userId) {
+  const user = await getUser(userId);
+  if (!user) return [];
+  const granted = [];
+
+  if (user.total >= 1) { const r = await grantAchievement(userId, 'first_prediction'); if (r) granted.push(r); }
+  if (user.total >= 10) { const r = await grantAchievement(userId, 'total_10'); if (r) granted.push(r); }
+  if (user.total >= 50) { const r = await grantAchievement(userId, 'total_50'); if (r) granted.push(r); }
+  if (user.total >= 100) { const r = await grantAchievement(userId, 'total_100'); if (r) granted.push(r); }
+  if (user.streak >= 3) { const r = await grantAchievement(userId, 'correct_3'); if (r) granted.push(r); }
+  if (user.streak >= 5) { const r = await grantAchievement(userId, 'correct_5'); if (r) granted.push(r); }
+  if (user.streak >= 10) { const r = await grantAchievement(userId, 'correct_10'); if (r) granted.push(r); }
+  if (user.daily_streak >= 3) { const r = await grantAchievement(userId, 'streak_3'); if (r) granted.push(r); }
+  if (user.daily_streak >= 7) { const r = await grantAchievement(userId, 'streak_7'); if (r) granted.push(r); }
+  if (user.daily_streak >= 30) { const r = await grantAchievement(userId, 'streak_30'); if (r) granted.push(r); }
+
+  const hour = new Date().getUTCHours() + 3;
+  if (hour >= 0 && hour < 5) { const r = await grantAchievement(userId, 'night_owl'); if (r) granted.push(r); }
+
+  return granted;
+}
+
+// --- Weekly stats ---
+
+async function getWeeklyStats(userId) {
+  const { rows } = await pool.query(`
+    SELECT COUNT(*) as total,
+      COUNT(CASE WHEN is_correct = true THEN 1 END) as correct,
+      COALESCE(SUM(points_earned), 0) as points
+    FROM predictions WHERE user_id=$1 AND created_at > NOW() - INTERVAL '7 days'
+  `, [userId]);
+  return rows[0];
+}
+
+async function getTotalUsersCount() {
+  const { rows } = await pool.query('SELECT COUNT(*) as c FROM users');
+  return parseInt(rows[0].c);
+}
+
+// --- Predictions for notify ---
+
+async function getPredictionsForQuestion(questionId) {
+  const { rows } = await pool.query('SELECT * FROM predictions WHERE question_id=$1', [questionId]);
+  return rows;
+}
+
 module.exports = {
   initDB, pool,
   getUser, createUser, saveUser, checkIn, useStreakFreeze,
@@ -494,4 +588,6 @@ module.exports = {
   joinRoom, isRoomMember, addRoomQuestion, countRoomQuestionsToday,
   getRoomQuestions, getRoomQuestion, getRoomPredictions, getRoomPrediction,
   roomPredict, resolveRoomQuestion, getRoomLeaderboard,
+  ACHIEVEMENT_DEFS, getAchievements, grantAchievement, checkAndGrantAchievements,
+  getWeeklyStats, getTotalUsersCount, getPredictionsForQuestion,
 };

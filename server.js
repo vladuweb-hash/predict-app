@@ -221,9 +221,29 @@ app.get('/api/questions', async (req, res) => {
     for (const q of questions) {
       const votes_a = await db.countVotes(q.id, 'a'); const votes_b = await db.countVotes(q.id, 'b');
       const votes_c = q.option_c ? await db.countVotes(q.id, 'c') : 0;
+      const total = votes_a + votes_b + votes_c;
       const pred = await db.getPrediction(userId, q.id);
+
+      let expires_at = q.expires_at;
+      if (!expires_at && q.auto_check?.check_after) expires_at = q.auto_check.check_after;
+      if (!expires_at && q.created_at) {
+        const created = new Date(q.created_at);
+        if (q.timeframe === 'tomorrow') created.setDate(created.getDate() + 1);
+        else if (q.timeframe === 'week') created.setDate(created.getDate() + 7);
+        else if (q.timeframe === 'month') created.setDate(created.getDate() + 30);
+        expires_at = created.toISOString();
+      }
+
+      let user_in_majority = null;
+      if (pred && total > 0) {
+        const userVoteCount = pred.answer === 'a' ? votes_a : pred.answer === 'b' ? votes_b : votes_c;
+        user_in_majority = userVoteCount / total > 0.5;
+      }
+
       result.push({ ...q, auto_check: undefined, votes_a, votes_b, votes_c, user_answer: pred?.answer || null,
-        user_was_correct: pred && q.resolved ? pred.answer === q.correct_answer : null });
+        user_was_correct: pred && q.resolved ? pred.answer === q.correct_answer : null,
+        expires_at, is_featured: q.is_featured || false, user_in_majority,
+        created_at: q.created_at });
     }
     res.json({ ok: true, questions: result });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -239,10 +259,29 @@ app.post('/api/predict', async (req, res) => {
     if (answer === 'c' && !question.option_c) return res.status(400).json({ error: 'No option C for this question' });
     if (question.resolved) return res.status(400).json({ error: 'Already resolved' });
     if (await db.getPrediction(userId, questionId)) return res.status(409).json({ error: 'Already predicted' });
-    const user = await db.addPrediction(userId, questionId, answer);
+
+    let pointsEarned = 5;
+    if (question.is_featured) pointsEarned = 10;
+
+    await db.pool.query('INSERT INTO predictions (user_id, question_id, answer, points_earned) VALUES ($1,$2,$3,$4)', [userId, questionId, answer, pointsEarned]);
+    await db.pool.query(`UPDATE users SET score = score + ${pointsEarned}, total = total + 1 WHERE telegram_id = $1`, [userId]);
+    const user = await db.getUser(userId);
+
     const votes_a = await db.countVotes(questionId, 'a'); const votes_b = await db.countVotes(questionId, 'b');
     const votes_c = question.option_c ? await db.countVotes(questionId, 'c') : 0;
-    res.json({ ok: true, question: { ...question, votes_a, votes_b, votes_c }, user, pointsEarned: 5 });
+    const total = votes_a + votes_b + votes_c;
+    const userVoteCount = answer === 'a' ? votes_a : answer === 'b' ? votes_b : votes_c;
+    const user_in_majority = total > 0 ? userVoteCount / total > 0.5 : null;
+
+    const newAchievements = await db.checkAndGrantAchievements(userId);
+
+    res.json({ ok: true, question: { ...question, votes_a, votes_b, votes_c },
+      user, pointsEarned, user_in_majority, is_featured: question.is_featured || false,
+      newAchievements: newAchievements.map(a => {
+        const def = db.ACHIEVEMENT_DEFS.find(d => d.type === a.type);
+        return def ? { type: a.type, emoji: def.emoji, title: def.title } : a;
+      })
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -262,7 +301,10 @@ app.get('/api/stats/:userId', async (req, res) => {
     const user = await db.getUser(userId); if (!user) return res.status(404).json({ error: 'User not found' });
     const rank = await db.getUserRank(user.score);
     const recentPredictions = await db.getRecentPredictions(userId);
-    res.json({ ok: true, user, rank, recentPredictions });
+    const achievements = await db.getAchievements(userId);
+    const weeklyStats = await db.getWeeklyStats(userId);
+    const totalUsers = await db.getTotalUsersCount();
+    res.json({ ok: true, user, rank, recentPredictions, achievements, weeklyStats, totalUsers });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -467,6 +509,7 @@ async function start() {
     }
 
     const scheduler = require('./scheduler');
+    if (bot) scheduler.setBot(bot);
     scheduler.start();
   });
 }

@@ -744,6 +744,205 @@
     .milestone-row.achieved { color: var(--green); }
     .milestone-row .m-reward { font-weight: 700; color: var(--orange); }
     .milestone-row.achieved .m-reward { color: var(--green); }
+
+    /* --- Featured Question (Question of the Day) --- */
+    .question-card.featured {
+      border: 1.5px solid var(--orange);
+      background: linear-gradient(135deg, rgba(253, 203, 110, 0.08), var(--card));
+      position: relative;
+    }
+
+    .featured-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--orange);
+      background: rgba(253, 203, 110, 0.15);
+      padding: 4px 10px;
+      border-radius: 6px;
+      animation: glow 2s ease-in-out infinite alternate;
+    }
+
+    @keyframes glow {
+      from { box-shadow: 0 0 4px rgba(253, 203, 110, 0.2); }
+      to { box-shadow: 0 0 12px rgba(253, 203, 110, 0.5); }
+    }
+
+    /* --- Timer --- */
+    .timer-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text2);
+      background: rgba(178, 178, 204, 0.1);
+      padding: 4px 10px;
+      border-radius: 6px;
+    }
+
+    .timer-badge.urgent { color: var(--red); background: rgba(255, 107, 107, 0.12); }
+
+    /* --- Majority / Minority --- */
+    .majority-badge {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-top: 8px;
+    }
+
+    .majority-badge.majority {
+      color: var(--accent2);
+      background: rgba(108, 92, 231, 0.12);
+    }
+
+    .majority-badge.minority {
+      color: var(--orange);
+      background: rgba(253, 203, 110, 0.12);
+    }
+
+    /* --- Confetti --- */
+    .confetti-container {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      z-index: 200;
+      overflow: hidden;
+    }
+
+    .confetti-piece {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      top: -10px;
+      animation: confettiFall 2.5s ease-out forwards;
+    }
+
+    @keyframes confettiFall {
+      0% { transform: translateY(0) rotateZ(0deg); opacity: 1; }
+      100% { transform: translateY(100vh) rotateZ(720deg); opacity: 0; }
+    }
+
+    .result-flash {
+      animation: flashGreen 0.6s ease;
+    }
+
+    .result-flash-wrong {
+      animation: flashRed 0.6s ease;
+    }
+
+    @keyframes flashGreen {
+      0% { box-shadow: 0 0 0 rgba(0, 206, 201, 0); }
+      50% { box-shadow: 0 0 30px rgba(0, 206, 201, 0.4); }
+      100% { box-shadow: 0 0 0 rgba(0, 206, 201, 0); }
+    }
+
+    @keyframes flashRed {
+      0% { box-shadow: 0 0 0 rgba(255, 107, 107, 0); }
+      50% { box-shadow: 0 0 30px rgba(255, 107, 107, 0.4); }
+      100% { box-shadow: 0 0 0 rgba(255, 107, 107, 0); }
+    }
+
+    /* --- Achievements --- */
+    .achievements-section {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      margin-top: 16px;
+    }
+
+    .achievements-section h3 {
+      font-size: 14px;
+      margin-bottom: 12px;
+      color: var(--text2);
+    }
+
+    .achievements-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .achievement-item {
+      text-align: center;
+      padding: 12px 6px;
+      border-radius: 12px;
+      background: rgba(108, 92, 231, 0.08);
+      transition: all 0.2s;
+    }
+
+    .achievement-item.locked {
+      opacity: 0.35;
+      filter: grayscale(1);
+    }
+
+    .achievement-emoji { font-size: 24px; }
+    .achievement-title { font-size: 11px; font-weight: 600; margin-top: 4px; }
+    .achievement-desc { font-size: 9px; color: var(--text2); margin-top: 2px; }
+
+    .achievement-popup {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--card);
+      border: 1.5px solid var(--orange);
+      border-radius: 16px;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 300;
+      animation: slideDown 0.4s ease, fadeOutUp 0.4s ease 2.5s forwards;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+    }
+
+    @keyframes slideDown {
+      from { transform: translateX(-50%) translateY(-100%); opacity: 0; }
+      to { transform: translateX(-50%) translateY(0); opacity: 1; }
+    }
+
+    @keyframes fadeOutUp {
+      to { transform: translateX(-50%) translateY(-100%); opacity: 0; }
+    }
+
+    /* --- Weekly Stats --- */
+    .weekly-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      margin-top: 16px;
+    }
+
+    .weekly-card h3 {
+      font-size: 14px;
+      margin-bottom: 12px;
+      color: var(--text2);
+    }
+
+    .weekly-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .weekly-stat {
+      text-align: center;
+      padding: 10px 6px;
+      background: rgba(108, 92, 231, 0.08);
+      border-radius: 10px;
+    }
+
+    .weekly-stat .ws-val { font-size: 20px; font-weight: 700; color: var(--green); }
+    .weekly-stat .ws-lbl { font-size: 10px; color: var(--text2); margin-top: 2px; }
   </style>
 </head>
 <body>
@@ -945,6 +1144,7 @@ async function loadQuestions() {
     }
 
     container.innerHTML = data.questions.map(q => renderQuestion(q)).join('');
+    updateTimers();
   } catch (e) {
     container.innerHTML = `
       <div class="empty-state">
@@ -967,6 +1167,14 @@ function renderQuestion(q) {
 
   let resolvedBadge = '';
   let cardClass = 'question-card';
+  if (q.is_featured) cardClass += ' featured';
+
+  const featuredBadge = q.is_featured ? '<span class="featured-badge">&#11088; Вопрос дня &middot; x2</span>' : '';
+
+  let timerHtml = '';
+  if (!q.resolved && q.expires_at) {
+    timerHtml = `<span class="timer-badge" data-expires="${q.expires_at}"></span>`;
+  }
 
   if (voted && q.resolved) {
     if (q.user_was_correct) {
@@ -978,6 +1186,15 @@ function renderQuestion(q) {
     }
   } else if (voted && !q.resolved) {
     resolvedBadge = `<span class="resolved-badge pending">&#8987; Ждём результат</span>`;
+  }
+
+  let majorityHtml = '';
+  if (voted && !q.resolved && q.user_in_majority !== null) {
+    if (q.user_in_majority) {
+      majorityHtml = '<div class="majority-badge majority">&#128101; Ты в большинстве</div>';
+    } else {
+      majorityHtml = '<div class="majority-badge minority">&#127775; Ты в меньшинстве — смелый выбор!</div>';
+    }
   }
 
   if (voted) {
@@ -1011,11 +1228,16 @@ function renderQuestion(q) {
             <div class="label"><span>${q.option_c}</span><span class="percent">${pctC}%</span></div>
           </div>` : '';
 
+    const pointsText = q.is_featured ? '+10 за ответ' : '+5 за ответ';
+    const bonusText = q.resolved && q.user_was_correct ? ' | +20 бонус' : '';
+
     return `
       <div class="${cardClass}">
         <div class="question-meta">
           <span class="question-category">${cat}</span>
           <span class="question-timeframe ${tfClass}">${tfLabel}</span>
+          ${featuredBadge}
+          ${timerHtml}
           ${resolvedBadge}
         </div>
         <div class="question-text">${q.text}</div>
@@ -1030,9 +1252,10 @@ function renderQuestion(q) {
           </div>
           ${optCHtml}
         </div>
+        ${majorityHtml}
         <div class="card-footer">
           <span>${total} голос${pluralize(total)}</span>
-          <span>+5 за ответ${q.resolved && q.user_was_correct ? ' | +20 бонус' : ''}</span>
+          <span>${pointsText}${bonusText}</span>
         </div>
       </div>`;
   }
@@ -1048,6 +1271,8 @@ function renderQuestion(q) {
       <div class="question-meta">
         <span class="question-category">${cat}</span>
         <span class="question-timeframe ${tfClass}">${tfLabel}</span>
+        ${featuredBadge}
+        ${timerHtml}
       </div>
       <div class="question-text">${q.text}</div>
       <div class="options">
@@ -1105,10 +1330,24 @@ async function predict(questionId, answer, btnEl) {
         btn.querySelector('.label').appendChild(percentSpan);
       });
 
+      let majorityHtml = '';
+      if (data.user_in_majority !== null && data.user_in_majority !== undefined) {
+        if (data.user_in_majority) {
+          majorityHtml = '<div class="majority-badge majority">&#128101; Ты в большинстве</div>';
+        } else {
+          majorityHtml = '<div class="majority-badge minority">&#127775; Ты в меньшинстве — смелый выбор!</div>';
+        }
+      }
+
       const footer = document.createElement('div');
-      footer.className = 'card-footer';
-      footer.innerHTML = `<span>${total} голос${pluralize(total)}</span><span class="points-popup">+${data.pointsEarned} &#9889; | &#8987; ждём результат</span>`;
+      footer.innerHTML = majorityHtml + `<div class="card-footer"><span>${total} голос${pluralize(total)}</span><span class="points-popup">+${data.pointsEarned} &#9889; | &#8987; ждём результат</span></div>`;
       card.appendChild(footer);
+
+      if (data.newAchievements && data.newAchievements.length > 0) {
+        data.newAchievements.forEach((a, i) => {
+          setTimeout(() => showAchievementPopup(a.emoji, a.title), i * 700);
+        });
+      }
 
       haptic('success');
     }
@@ -1193,12 +1432,16 @@ async function loadProfile() {
         </div>
       </div>
 
+      ${renderWeeklyStats(data.weeklyStats)}
+      ${renderAchievements(data.achievements || [])}
+
       <button class="invite-btn" onclick="shareInvite()">Пригласить друга</button>
       <div class="invite-reward">+50 очков за каждого друга</div>
 
       <div class="scoring-info">
         <h3>Как начисляются очки</h3>
         <div class="scoring-row"><span>Любой ответ</span><span class="pts">+5</span></div>
+        <div class="scoring-row"><span>Вопрос дня</span><span class="pts">+10</span></div>
         <div class="scoring-row"><span>Угаданный результат</span><span class="pts">+20</span></div>
         <div class="scoring-row"><span>Приглашение друга</span><span class="pts">+50</span></div>
         <div class="scoring-row"><span>Серия 3 / 7 / 14 / 30 дней</span><span class="pts">+30...+500</span></div>
@@ -1814,6 +2057,114 @@ function shareRoom(code) {
     navigator.clipboard?.writeText(code);
     alert(`Код скопирован: ${code}`);
   }
+}
+
+// --- TIMER COUNTDOWN ---
+function updateTimers() {
+  document.querySelectorAll('.timer-badge[data-expires]').forEach(el => {
+    const expires = new Date(el.dataset.expires).getTime();
+    const now = Date.now();
+    const diff = expires - now;
+    if (diff <= 0) {
+      el.textContent = 'Время вышло';
+      el.classList.add('urgent');
+      return;
+    }
+    const hours = Math.floor(diff / 3600000);
+    const minutes = Math.floor((diff % 3600000) / 60000);
+    if (hours > 24) {
+      const days = Math.floor(hours / 24);
+      el.textContent = `\u23F3 ${days} дн. ${hours % 24} ч.`;
+    } else if (hours > 0) {
+      el.textContent = `\u23F3 ${hours} ч. ${minutes} мин.`;
+    } else {
+      el.textContent = `\u23F3 ${minutes} мин.`;
+      if (minutes < 30) el.classList.add('urgent');
+    }
+  });
+}
+setInterval(updateTimers, 10000);
+
+// --- CONFETTI ---
+function showConfetti() {
+  const container = document.createElement('div');
+  container.className = 'confetti-container';
+  document.body.appendChild(container);
+  const colors = ['#6c5ce7', '#00cec9', '#fdcb6e', '#ff6b6b', '#a29bfe', '#55efc4'];
+  for (let i = 0; i < 60; i++) {
+    const piece = document.createElement('div');
+    piece.className = 'confetti-piece';
+    piece.style.left = Math.random() * 100 + '%';
+    piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+    piece.style.animationDelay = Math.random() * 0.8 + 's';
+    piece.style.animationDuration = (2 + Math.random() * 1.5) + 's';
+    piece.style.width = (6 + Math.random() * 8) + 'px';
+    piece.style.height = (6 + Math.random() * 8) + 'px';
+    piece.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+    container.appendChild(piece);
+  }
+  setTimeout(() => container.remove(), 3500);
+}
+
+// --- ACHIEVEMENT POPUP ---
+function showAchievementPopup(emoji, title) {
+  const popup = document.createElement('div');
+  popup.className = 'achievement-popup';
+  popup.innerHTML = `<span style="font-size:28px">${emoji}</span><div><div style="font-size:12px;color:var(--text2)">Новое достижение!</div><div style="font-weight:700">${title}</div></div>`;
+  document.body.appendChild(popup);
+  haptic('success');
+  setTimeout(() => popup.remove(), 3200);
+}
+
+// --- RENDER ACHIEVEMENTS ---
+const ALL_ACHIEVEMENTS = [
+  { type: 'first_prediction', emoji: '\uD83C\uDFAF', title: 'Первый прогноз', desc: 'Сделай предсказание' },
+  { type: 'correct_3', emoji: '\uD83D\uDD25', title: 'Горячая серия', desc: '3 верных подряд' },
+  { type: 'correct_5', emoji: '\uD83D\uDC8E', title: 'Бриллиантовый ум', desc: '5 верных подряд' },
+  { type: 'correct_10', emoji: '\uD83E\uDDE0', title: 'Провидец', desc: '10 верных подряд' },
+  { type: 'total_10', emoji: '\uD83D\uDCDD', title: 'Активный', desc: '10 прогнозов' },
+  { type: 'total_50', emoji: '\u26A1', title: 'Опытный', desc: '50 прогнозов' },
+  { type: 'total_100', emoji: '\uD83D\uDC51', title: 'Легенда', desc: '100 прогнозов' },
+  { type: 'streak_3', emoji: '\uD83D\uDD25', title: '3 дня подряд', desc: 'Серия 3 дня' },
+  { type: 'streak_7', emoji: '\uD83C\uDF1F', title: 'Неделя', desc: 'Серия 7 дней' },
+  { type: 'streak_30', emoji: '\uD83C\uDFC6', title: 'Месяц', desc: 'Серия 30 дней' },
+  { type: 'night_owl', emoji: '\uD83E\uDD89', title: 'Ночная сова', desc: 'Прогноз ночью' },
+  { type: 'featured_correct', emoji: '\u2B50', title: 'Звёздный ответ', desc: 'Угадай вопрос дня' },
+];
+
+function renderAchievements(userAchievements) {
+  const unlockedTypes = userAchievements.map(a => a.type);
+  const items = ALL_ACHIEVEMENTS.map(a => {
+    const unlocked = unlockedTypes.includes(a.type);
+    return `<div class="achievement-item ${unlocked ? '' : 'locked'}">
+      <div class="achievement-emoji">${a.emoji}</div>
+      <div class="achievement-title">${a.title}</div>
+      <div class="achievement-desc">${a.desc}</div>
+    </div>`;
+  }).join('');
+
+  return `<div class="achievements-section">
+    <h3>\uD83C\uDFC5 Достижения (${unlockedTypes.length}/${ALL_ACHIEVEMENTS.length})</h3>
+    <div class="achievements-grid">${items}</div>
+  </div>`;
+}
+
+// --- RENDER WEEKLY STATS ---
+function renderWeeklyStats(ws) {
+  if (!ws) return '';
+  const total = parseInt(ws.total) || 0;
+  const correct = parseInt(ws.correct) || 0;
+  const points = parseInt(ws.points) || 0;
+  const accuracy = total > 0 ? Math.round(correct / total * 100) : 0;
+
+  return `<div class="weekly-card">
+    <h3>\uD83D\uDCC5 Неделя</h3>
+    <div class="weekly-grid">
+      <div class="weekly-stat"><div class="ws-val">${total}</div><div class="ws-lbl">Прогнозов</div></div>
+      <div class="weekly-stat"><div class="ws-val">${accuracy}%</div><div class="ws-lbl">Точность</div></div>
+      <div class="weekly-stat"><div class="ws-val">+${points}</div><div class="ws-lbl">Очков</div></div>
+    </div>
+  </div>`;
 }
 
 // --- INIT ---

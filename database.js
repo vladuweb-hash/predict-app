@@ -388,12 +388,12 @@ async function isRoomMember(roomId, userId) {
   return parseInt(rows[0].c) > 0;
 }
 
-async function addRoomQuestion(roomId, userId, text, optA, optB) {
+async function addRoomQuestion(roomId, userId, text, optA, optB, optC) {
   const { rows } = await pool.query(
-    `INSERT INTO room_questions (room_id, text, option_a, option_b, author_id) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-    [roomId, text.slice(0, 200), optA.slice(0, 60), optB.slice(0, 60), userId]
+    `INSERT INTO room_questions (room_id, text, option_a, option_b, option_c, author_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+    [roomId, text.slice(0, 200), optA.slice(0, 60), optB.slice(0, 60), optC ? optC.slice(0, 60) : null, userId]
   );
-  return { id: rows[0].id, text: text.slice(0, 200), option_a: optA.slice(0, 60), option_b: optB.slice(0, 60) };
+  return { id: rows[0].id, text: text.slice(0, 200), option_a: optA.slice(0, 60), option_b: optB.slice(0, 60), option_c: optC ? optC.slice(0, 60) : null };
 }
 
 async function countRoomQuestionsToday(roomId, userId) {

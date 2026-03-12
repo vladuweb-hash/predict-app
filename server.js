@@ -355,13 +355,15 @@ app.get('/api/rooms/:roomId', async (req, res) => {
     const questions = [];
     for (const q of rawQs) {
       const preds = await db.getRoomPredictions(q.id);
-      const votesA = preds.filter(p => p.answer === 'a').length; const votesB = preds.filter(p => p.answer === 'b').length;
+      const votesA = preds.filter(p => p.answer === 'a').length;
+      const votesB = preds.filter(p => p.answer === 'b').length;
+      const votesC = preds.filter(p => p.answer === 'c').length;
       const userPred = preds.find(p => p.user_id === userId);
       const author = await db.getUser(q.author_id);
       questions.push({
-        id: q.id, text: q.text, option_a: q.option_a, option_b: q.option_b,
+        id: q.id, text: q.text, option_a: q.option_a, option_b: q.option_b, option_c: q.option_c || null,
         author_name: author?.first_name || author?.username || '?',
-        votes_a: votesA, votes_b: votesB, user_answer: userPred?.answer || null,
+        votes_a: votesA, votes_b: votesB, votes_c: votesC, user_answer: userPred?.answer || null,
         resolved: q.resolved, correct_answer: q.correct_answer,
         user_was_correct: userPred && q.resolved ? userPred.answer === q.correct_answer : null,
         can_resolve: (q.author_id === userId || room.owner_id === userId) && !q.resolved
@@ -377,10 +379,10 @@ app.get('/api/rooms/:roomId', async (req, res) => {
 app.post('/api/rooms/:roomId/question', async (req, res) => {
   try {
     const roomId = parseInt(req.params.roomId);
-    const { userId, text, option_a, option_b } = req.body;
+    const { userId, text, option_a, option_b, option_c } = req.body;
     if (!userId || !text || !option_a || !option_b) return res.status(400).json({ error: 'Missing fields' });
     if (await db.countRoomQuestionsToday(roomId, userId) >= 5) return res.status(400).json({ error: 'Max 5 questions per day' });
-    const question = await db.addRoomQuestion(roomId, userId, text, option_a, option_b);
+    const question = await db.addRoomQuestion(roomId, userId, text, option_a, option_b, option_c || null);
     res.json({ ok: true, question });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -390,11 +392,12 @@ app.post('/api/rooms/:roomId/predict', async (req, res) => {
     const roomId = parseInt(req.params.roomId);
     const { userId, questionId, answer } = req.body;
     if (!userId || !questionId || !answer) return res.status(400).json({ error: 'Missing fields' });
+    if (!['a', 'b', 'c'].includes(answer)) return res.status(400).json({ error: 'Invalid answer' });
     const result = await db.roomPredict(roomId, questionId, userId, answer);
     if (!result.ok) return res.status(400).json(result);
     const user = await db.getUser(userId);
     const preds = await db.getRoomPredictions(questionId);
-    res.json({ ok: true, votes_a: preds.filter(p => p.answer === 'a').length, votes_b: preds.filter(p => p.answer === 'b').length, pointsEarned: 5, user });
+    res.json({ ok: true, votes_a: preds.filter(p => p.answer === 'a').length, votes_b: preds.filter(p => p.answer === 'b').length, votes_c: preds.filter(p => p.answer === 'c').length, pointsEarned: 5, user });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

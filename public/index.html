@@ -1084,14 +1084,19 @@ async function predict(questionId, answer, btnEl) {
       document.getElementById('headerScore').textContent = currentUser.score;
 
       const q = data.question;
-      const total = q.votes_a + q.votes_b;
-      const pctA = total > 0 ? Math.round((q.votes_a / total) * 100) : 50;
-      const pctB = total > 0 ? 100 - pctA : 50;
+      const hasC = !!q.option_c;
+      const total = q.votes_a + q.votes_b + (hasC ? (q.votes_c || 0) : 0);
+      const pctA = total > 0 ? Math.round((q.votes_a / total) * 100) : (hasC ? 33 : 50);
+      const pctB = total > 0 ? Math.round((q.votes_b / total) * 100) : (hasC ? 33 : 50);
+      const pctC = hasC ? (total > 0 ? 100 - pctA - pctB : 34) : 0;
 
+      const answerMap = ['a', 'b', 'c'];
+      const pctMap = [pctA, pctB, pctC];
       buttons.forEach((btn, i) => {
-        const isSelected = (i === 0 && answer === 'a') || (i === 1 && answer === 'b');
-        const pct = i === 0 ? pctA : pctB;
-        if (isSelected) btn.classList.add('selected');
+        const letter = answerMap[i];
+        if (!letter) return;
+        const pct = pctMap[i];
+        if (letter === answer) btn.classList.add('selected');
         btn.querySelector('.bar').style.width = pct + '%';
         const percentSpan = document.createElement('span');
         percentSpan.className = 'percent';
@@ -1651,9 +1656,11 @@ async function loadRoomDetail() {
 }
 
 function renderRoomQuestion(q) {
-  const total = q.votes_a + q.votes_b;
-  const pctA = total > 0 ? Math.round((q.votes_a / total) * 100) : 50;
-  const pctB = total > 0 ? 100 - pctA : 50;
+  const hasC = !!q.option_c;
+  const total = q.votes_a + q.votes_b + (hasC ? (q.votes_c || 0) : 0);
+  const pctA = total > 0 ? Math.round((q.votes_a / total) * 100) : (hasC ? 33 : 50);
+  const pctB = total > 0 ? Math.round((q.votes_b / total) * 100) : (hasC ? 33 : 50);
+  const pctC = hasC ? (total > 0 ? 100 - pctA - pctB : 34) : 0;
   const voted = !!q.user_answer;
 
   let badge = '';
@@ -1664,24 +1671,32 @@ function renderRoomQuestion(q) {
 
   let resolveHtml = '';
   if (q.can_resolve && total > 0) {
+    const resolveCBtn = hasC ? `<button class="resolve-btn" onclick="resolveRoomQ(${q.id},'c')">&#10003; ${q.option_c}</button>` : '';
     resolveHtml = `
       <div class="resolve-btns">
         <button class="resolve-btn" onclick="resolveRoomQ(${q.id},'a')">&#10003; ${q.option_a}</button>
         <button class="resolve-btn" onclick="resolveRoomQ(${q.id},'b')">&#10003; ${q.option_b}</button>
+        ${resolveCBtn}
       </div>`;
   }
 
   if (voted) {
     let classA = 'option-btn voted' + (q.user_answer === 'a' ? ' selected' : '');
     let classB = 'option-btn voted' + (q.user_answer === 'b' ? ' selected' : '');
+    let classC = 'option-btn voted' + (q.user_answer === 'c' ? ' selected' : '');
     if (q.resolved) {
       if (q.user_answer === 'a' && q.correct_answer === 'a') classA += ' was-correct';
       if (q.user_answer === 'a' && q.correct_answer !== 'a') classA += ' was-wrong';
       if (q.user_answer === 'b' && q.correct_answer === 'b') classB += ' was-correct';
       if (q.user_answer === 'b' && q.correct_answer !== 'b') classB += ' was-wrong';
+      if (q.user_answer === 'c' && q.correct_answer === 'c') classC += ' was-correct';
+      if (q.user_answer === 'c' && q.correct_answer !== 'c') classC += ' was-wrong';
       if (q.correct_answer === 'a' && q.user_answer !== 'a') classA += ' is-correct-answer';
       if (q.correct_answer === 'b' && q.user_answer !== 'b') classB += ' is-correct-answer';
+      if (q.correct_answer === 'c' && q.user_answer !== 'c') classC += ' is-correct-answer';
     }
+    const optCVoted = hasC ? `
+          <div class="${classC}"><div class="bar" style="width:${pctC}%"></div><div class="label"><span>${q.option_c}</span><span class="percent">${pctC}%</span></div></div>` : '';
     return `
       <div class="${cardClass}">
         <div class="question-meta">
@@ -1692,12 +1707,15 @@ function renderRoomQuestion(q) {
         <div class="options">
           <div class="${classA}"><div class="bar" style="width:${pctA}%"></div><div class="label"><span>${q.option_a}</span><span class="percent">${pctA}%</span></div></div>
           <div class="${classB}"><div class="bar" style="width:${pctB}%"></div><div class="label"><span>${q.option_b}</span><span class="percent">${pctB}%</span></div></div>
+          ${optCVoted}
         </div>
         <div class="card-footer"><span>${total} голос${pluralize(total)}</span></div>
         ${resolveHtml}
       </div>`;
   }
 
+  const btnC = hasC ? `
+        <button class="option-btn" onclick="roomPredict(${q.id},'c',this)"><div class="bar" style="width:0%"></div><div class="label"><span>${q.option_c}</span></div></button>` : '';
   return `
     <div class="${cardClass}" id="rq-${q.id}">
       <div class="question-meta"><span class="question-category">${q.author_name}</span></div>
@@ -1705,6 +1723,7 @@ function renderRoomQuestion(q) {
       <div class="options">
         <button class="option-btn" onclick="roomPredict(${q.id},'a',this)"><div class="bar" style="width:0%"></div><div class="label"><span>${q.option_a}</span></div></button>
         <button class="option-btn" onclick="roomPredict(${q.id},'b',this)"><div class="bar" style="width:0%"></div><div class="label"><span>${q.option_b}</span></div></button>
+        ${btnC}
       </div>
     </div>`;
 }
@@ -1752,6 +1771,7 @@ function showAddQuestionModal() {
     <input class="form-input" id="rqText" placeholder="Вопрос" maxlength="200">
     <input class="form-input" id="rqOptA" placeholder="Вариант A" maxlength="60">
     <input class="form-input" id="rqOptB" placeholder="Вариант B" maxlength="60">
+    <input class="form-input" id="rqOptC" placeholder="Вариант C (необязательно)" maxlength="60">
     <button class="modal-btn primary" onclick="addRoomQuestion()">Опубликовать</button>
     <button class="modal-btn ghost" onclick="closeModal()">Отмена</button>`;
   document.getElementById('modalOverlay').classList.add('show');
@@ -1761,13 +1781,17 @@ async function addRoomQuestion() {
   const text = document.getElementById('rqText').value.trim();
   const optA = document.getElementById('rqOptA').value.trim();
   const optB = document.getElementById('rqOptB').value.trim();
+  const optC = document.getElementById('rqOptC').value.trim();
   if (!text || !optA || !optB) return;
   haptic('medium');
+
+  const body = { userId: currentUser.telegram_id, text, option_a: optA, option_b: optB };
+  if (optC) body.option_c = optC;
 
   const res = await fetch(`${API}/api/rooms/${currentRoomId}/question`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId: currentUser.telegram_id, text, option_a: optA, option_b: optB })
+    body: JSON.stringify(body)
   });
   const data = await res.json();
   if (data.ok) {

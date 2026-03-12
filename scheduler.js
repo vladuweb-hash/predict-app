@@ -45,40 +45,49 @@ async function generateDailyQuestions() {
   try {
     const btcPrice = await getBtcPrice();
     const threshold = Math.round(btcPrice / 100) * 100;
+    const margin = Math.round(threshold * 0.01);
     await db.addQuestion({
-      text: `Bitcoin будет выше $${threshold.toLocaleString('en-US')} завтра к 18:00 МСК?`,
-      option_a: `Да, выше $${threshold.toLocaleString('en-US')}`, option_b: `Нет, ниже`,
+      text: `Куда двинется Bitcoin завтра к 18:00 МСК? (сейчас ~$${threshold.toLocaleString('en-US')})`,
+      option_a: `Выше $${(threshold + margin).toLocaleString('en-US')}`,
+      option_b: `Ниже $${(threshold - margin).toLocaleString('en-US')}`,
+      option_c: `Примерно так же (±${margin})`,
       category: 'crypto', timeframe: 'tomorrow',
-      autoCheck: { type: 'crypto_price', coin: 'bitcoin', threshold, direction: 'above', generated_date: today, check_after: getCheckTime(18) }
+      autoCheck: { type: 'crypto_price_3way', coin: 'bitcoin', threshold, margin, generated_date: today, check_after: getCheckTime(18) }
     });
     generated++;
-    console.log(`  [+] BTC question (threshold: $${threshold})`);
+    console.log(`  [+] BTC question ($${threshold} ±${margin})`);
   } catch (e) { console.error('  [!] BTC question failed:', e.message); }
 
   try {
     const ethPrice = await getEthPrice();
     const threshold = Math.round(ethPrice / 10) * 10;
+    const margin = Math.round(threshold * 0.01);
     await db.addQuestion({
-      text: `Ethereum будет выше $${threshold.toLocaleString('en-US')} завтра к 18:00 МСК?`,
-      option_a: `Да, выше $${threshold.toLocaleString('en-US')}`, option_b: `Нет, ниже`,
+      text: `Куда двинется Ethereum завтра к 18:00 МСК? (сейчас ~$${threshold.toLocaleString('en-US')})`,
+      option_a: `Выше $${(threshold + margin).toLocaleString('en-US')}`,
+      option_b: `Ниже $${(threshold - margin).toLocaleString('en-US')}`,
+      option_c: `Примерно так же (±${margin})`,
       category: 'crypto', timeframe: 'tomorrow',
-      autoCheck: { type: 'crypto_price', coin: 'ethereum', threshold, direction: 'above', generated_date: today, check_after: getCheckTime(18) }
+      autoCheck: { type: 'crypto_price_3way', coin: 'ethereum', threshold, margin, generated_date: today, check_after: getCheckTime(18) }
     });
     generated++;
-    console.log(`  [+] ETH question (threshold: $${threshold})`);
+    console.log(`  [+] ETH question ($${threshold} ±${margin})`);
   } catch (e) { console.error('  [!] ETH question failed:', e.message); }
 
   try {
     const usdRub = await getUsdRub();
     const threshold = Math.round(usdRub);
+    const margin = 0.5;
     await db.addQuestion({
-      text: `Доллар будет дороже ${threshold}₽ завтра?`,
-      option_a: `Да, дороже ${threshold}₽`, option_b: `Нет, дешевле`,
+      text: `Курс доллара завтра? (сейчас ~${threshold}₽)`,
+      option_a: `Дороже ${threshold + margin}₽`,
+      option_b: `Дешевле ${threshold - margin}₽`,
+      option_c: `Примерно так же (±${margin}₽)`,
       category: 'finance', timeframe: 'tomorrow',
-      autoCheck: { type: 'currency', pair: 'USD_RUB', threshold, direction: 'above', generated_date: today, check_after: getCheckTime(18) }
+      autoCheck: { type: 'currency_3way', pair: 'USD_RUB', threshold, margin, generated_date: today, check_after: getCheckTime(18) }
     });
     generated++;
-    console.log(`  [+] USD/RUB question (threshold: ${threshold}₽)`);
+    console.log(`  [+] USD/RUB question (${threshold}₽ ±${margin})`);
   } catch (e) { console.error('  [!] USD/RUB question failed:', e.message); }
 
   if (generated > 0) console.log(`[Scheduler] Generated ${generated} questions for ${today}`);
@@ -108,6 +117,15 @@ async function autoResolveQuestions() {
           console.log(`  [?] ${ac.coin}: $${currentValue} vs $${ac.threshold} → ${correctAnswer}`);
           break;
         }
+        case 'crypto_price_3way': {
+          const priceData = await fetchJSON(`https://api.coingecko.com/api/v3/simple/price?ids=${ac.coin}&vs_currencies=usd`);
+          currentValue = priceData[ac.coin].usd;
+          const upper = ac.threshold + ac.margin;
+          const lower = ac.threshold - ac.margin;
+          correctAnswer = currentValue > upper ? 'a' : currentValue < lower ? 'b' : 'c';
+          console.log(`  [?] ${ac.coin}: $${currentValue} | range $${lower}-$${upper} → ${correctAnswer}`);
+          break;
+        }
         case 'currency': {
           const rateData = await fetchJSON('https://open.er-api.com/v6/latest/USD');
           currentValue = rateData.rates.RUB;
@@ -115,11 +133,21 @@ async function autoResolveQuestions() {
           console.log(`  [?] USD/RUB: ${currentValue.toFixed(2)} vs ${ac.threshold} → ${correctAnswer}`);
           break;
         }
+        case 'currency_3way': {
+          const rateData = await fetchJSON('https://open.er-api.com/v6/latest/USD');
+          currentValue = rateData.rates.RUB;
+          const upper = ac.threshold + ac.margin;
+          const lower = ac.threshold - ac.margin;
+          correctAnswer = currentValue > upper ? 'a' : currentValue < lower ? 'b' : 'c';
+          console.log(`  [?] USD/RUB: ${currentValue.toFixed(2)} | range ${lower}-${upper} → ${correctAnswer}`);
+          break;
+        }
         default: continue;
       }
       const result = await db.resolveQuestion(q.id, correctAnswer);
+      const answerLabel = correctAnswer === 'a' ? q.option_a : correctAnswer === 'b' ? q.option_b : q.option_c;
       if (result.ok) {
-        console.log(`  [OK] Q${q.id}: "${q.text}" → ${correctAnswer === 'a' ? q.option_a : q.option_b} | ${result.winnersCount}/${result.totalPredictions} winners`);
+        console.log(`  [OK] Q${q.id}: "${q.text}" → ${answerLabel} | ${result.winnersCount}/${result.totalPredictions} winners`);
         resolved++;
       }
     } catch (e) { console.error(`  [!] Failed to resolve Q${q.id}:`, e.message); }
@@ -143,10 +171,14 @@ async function generateWeeklyQuestions() {
   try {
     const btcPrice = await getBtcPrice();
     const roundedPrice = Math.round(btcPrice / 1000) * 1000;
+    const margin = Math.round(roundedPrice * 0.03);
     await db.addQuestion({
-      text: `Bitcoin будет выше $${roundedPrice.toLocaleString('en-US')} к пятнице?`,
-      option_a: `Да, выше`, option_b: `Нет, ниже`, category: 'crypto', timeframe: 'week',
-      autoCheck: { type: 'crypto_price', coin: 'bitcoin', threshold: roundedPrice, direction: 'above', generated_date: weekKey, check_after: friday.toISOString() }
+      text: `Bitcoin к пятнице 18:00 МСК? (сейчас ~$${roundedPrice.toLocaleString('en-US')})`,
+      option_a: `Выше $${(roundedPrice + margin).toLocaleString('en-US')}`,
+      option_b: `Ниже $${(roundedPrice - margin).toLocaleString('en-US')}`,
+      option_c: `Примерно так же (±$${margin.toLocaleString('en-US')})`,
+      category: 'crypto', timeframe: 'week',
+      autoCheck: { type: 'crypto_price_3way', coin: 'bitcoin', threshold: roundedPrice, margin, generated_date: weekKey, check_after: friday.toISOString() }
     });
     generated++;
   } catch (e) { console.error('  [!] Weekly BTC failed:', e.message); }
@@ -154,10 +186,14 @@ async function generateWeeklyQuestions() {
   try {
     const usdRub = await getUsdRub();
     const roundedRate = Math.round(usdRub);
+    const margin = 1;
     await db.addQuestion({
-      text: `Доллар будет дороже ${roundedRate}₽ к пятнице?`,
-      option_a: `Да, дороже`, option_b: `Нет, дешевле`, category: 'finance', timeframe: 'week',
-      autoCheck: { type: 'currency', pair: 'USD_RUB', threshold: roundedRate, direction: 'above', generated_date: weekKey, check_after: friday.toISOString() }
+      text: `Курс доллара к пятнице? (сейчас ~${roundedRate}₽)`,
+      option_a: `Дороже ${roundedRate + margin}₽`,
+      option_b: `Дешевле ${roundedRate - margin}₽`,
+      option_c: `Примерно так же (±${margin}₽)`,
+      category: 'finance', timeframe: 'week',
+      autoCheck: { type: 'currency_3way', pair: 'USD_RUB', threshold: roundedRate, margin, generated_date: weekKey, check_after: friday.toISOString() }
     });
     generated++;
   } catch (e) { console.error('  [!] Weekly USD/RUB failed:', e.message); }

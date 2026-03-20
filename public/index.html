@@ -285,13 +285,13 @@ function renderStartScreen() {
     </div>
     <div class="card" style="text-align:center;padding:40px 20px">
       <div style="font-size:64px;margin-bottom:16px">📈</div>
-      <p style="color:var(--text2);margin-bottom:20px">Угадай направление цены 5 активов.<br>Крипта, валюты, золото, акции — результат через 1 час.</p>
+      <p style="color:var(--text2);margin-bottom:20px">Угадай направление цены 5 активов.<br>Крипта, валюты, золото — результат через 1 час.</p>
       <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:24px">
         <span style="background:var(--bg);padding:5px 10px;border-radius:8px;font-size:12px">₿ BTC</span>
+        <span style="background:var(--bg);padding:5px 10px;border-radius:8px;font-size:12px">◎ SOL</span>
+        <span style="background:var(--bg);padding:5px 10px;border-radius:8px;font-size:12px">🐕 DOGE</span>
         <span style="background:var(--bg);padding:5px 10px;border-radius:8px;font-size:12px">💵 USD/RUB</span>
         <span style="background:var(--bg);padding:5px 10px;border-radius:8px;font-size:12px">🥇 Золото</span>
-        <span style="background:var(--bg);padding:5px 10px;border-radius:8px;font-size:12px">🛢️ Нефть</span>
-        <span style="background:var(--bg);padding:5px 10px;border-radius:8px;font-size:12px">🍎 AAPL</span>
         <span style="background:var(--bg);padding:5px 10px;border-radius:8px;font-size:12px">⛽ Gas</span>
       </div>
       <button class="btn btn-accent" onclick="startRound()">Начать раунд</button>
@@ -763,7 +763,7 @@ async function loadProfile() {
 }
 
 function shareInvite() {
-  const text = '🎯 Предскажи цены крипты, акций, золота и выигрывай Stars!';
+  const text = '🎯 Предскажи курсы крипты, валют и золота — выигрывай Stars!';
   const name = botName || 'your_bot';
   const link = `https://t.me/${name}?startapp=ref_${currentUser.telegram_id}`;
   const url = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;

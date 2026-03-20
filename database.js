@@ -128,22 +128,21 @@ async function initDB() {
 // --- Assets ---
 
 const ASSETS = [
-  // Crypto
+  // Crypto — 3 reliable sources: Binance, CoinGecko, CryptoCompare
   { id: 'bitcoin', symbol: 'BTC', label: 'Bitcoin', emoji: '₿', type: 'crypto' },
   { id: 'ethereum', symbol: 'ETH', label: 'Ethereum', emoji: 'Ξ', type: 'crypto' },
   { id: 'the-open-network', symbol: 'TON', label: 'Toncoin', emoji: '💎', type: 'crypto' },
   { id: 'solana', symbol: 'SOL', label: 'Solana', emoji: '◎', type: 'crypto' },
-  // Forex
+  { id: 'dogecoin', symbol: 'DOGE', label: 'Dogecoin', emoji: '🐕', type: 'crypto' },
+  { id: 'ripple', symbol: 'XRP', label: 'XRP', emoji: '💧', type: 'crypto' },
+  { id: 'binancecoin', symbol: 'BNB', label: 'BNB', emoji: '🔶', type: 'crypto' },
+  { id: 'cardano', symbol: 'ADA', label: 'Cardano', emoji: '🔵', type: 'crypto' },
+  // Forex — reliable ExchangeRate API
   { id: 'usd-rub', symbol: 'USD/RUB', label: 'Доллар/Рубль', emoji: '💵', type: 'forex', fxFrom: 'USD', fxTo: 'RUB' },
   { id: 'eur-usd', symbol: 'EUR/USD', label: 'Евро/Доллар', emoji: '💶', type: 'forex', fxFrom: 'EUR', fxTo: 'USD' },
-  // Commodities
+  // Gold — metals.live + fallback
   { id: 'gold', symbol: 'XAU', label: 'Золото', emoji: '🥇', type: 'metal' },
-  { id: 'oil-brent', symbol: 'OIL', label: 'Нефть Brent', emoji: '🛢️', type: 'yahoo', ticker: 'BZ=F' },
-  // Stocks
-  { id: 'apple', symbol: 'AAPL', label: 'Apple', emoji: '🍎', type: 'yahoo', ticker: 'AAPL' },
-  { id: 'tesla', symbol: 'TSLA', label: 'Tesla', emoji: '🚗', type: 'yahoo', ticker: 'TSLA' },
-  { id: 'nvidia', symbol: 'NVDA', label: 'Nvidia', emoji: '🟢', type: 'yahoo', ticker: 'NVDA' },
-  // ETH Gas
+  // ETH Gas — Etherscan / Infura / LlamaRPC
   { id: 'eth-gas', symbol: 'GAS', label: 'ETH Gas (gwei)', emoji: '⛽', type: 'ethgas' },
 ];
 
@@ -162,21 +161,8 @@ function setCachedPrice(assetId, price) {
   priceCache[assetId] = { price, timestamp: Date.now() };
 }
 
-function isMarketOpen() {
-  const now = new Date();
-  const day = now.getUTCDay();
-  const hour = now.getUTCHours();
-  if (day === 0 || day === 6) return false;
-  return hour >= 13 && hour < 21; // ~NYSE 9:30-16:00 ET ≈ 13:30-20:00 UTC
-}
-
 function pickRandomAssets(count = 5) {
-  const marketOpen = isMarketOpen();
-  const available = ASSETS.filter(a => {
-    if (a.type === 'yahoo' && a.ticker !== 'BZ=F' && !marketOpen) return false;
-    return true;
-  });
-  const shuffled = [...available].sort(() => Math.random() - 0.5);
+  const shuffled = [...ASSETS].sort(() => Math.random() - 0.5);
   return shuffled.slice(0, Math.min(count, shuffled.length));
 }
 
@@ -194,13 +180,19 @@ const HEADERS = {
   'Accept': 'application/json',
 };
 
-async function fetchJSON(url, timeout = 10000) {
+async function fetchJSON(url, timeout = 15000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   try {
     const res = await fetch(url, { signal: controller.signal, headers: HEADERS });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`HTTP ${res.status} from ${new URL(url).hostname}: ${body.slice(0, 100)}`);
+    }
     return await res.json();
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error(`Timeout ${timeout}ms: ${new URL(url).hostname}`);
+    throw e;
   } finally { clearTimeout(timer); }
 }
 
@@ -215,28 +207,25 @@ async function fetchCryptoGecko(ids) {
   return prices;
 }
 
-// Crypto: Binance
+// Crypto: Binance (individual requests, faster than loading all tickers)
 async function fetchCryptoBinance(ids) {
-  const map = { bitcoin: 'BTCUSDT', ethereum: 'ETHUSDT', solana: 'SOLUSDT', 'the-open-network': 'TONUSDT' };
+  const map = { bitcoin: 'BTCUSDT', ethereum: 'ETHUSDT', solana: 'SOLUSDT', dogecoin: 'DOGEUSDT', 'the-open-network': 'TONUSDT', ripple: 'XRPUSDT', binancecoin: 'BNBUSDT', cardano: 'ADAUSDT' };
   const prices = {};
-  const pairs = ids.map(id => map[id]).filter(Boolean);
-  if (pairs.length === 0) return prices;
-  try {
-    const data = await fetchJSON('https://api.binance.com/api/v3/ticker/price');
-    if (Array.isArray(data)) {
-      for (const [id, pair] of Object.entries(map)) {
-        if (!ids.includes(id)) continue;
-        const found = data.find(d => d.symbol === pair);
-        if (found?.price) prices[id] = parseFloat(found.price);
-      }
-    }
-  } catch (e) { console.error('[Binance]', e.message); }
+  const fetches = ids.map(async id => {
+    const pair = map[id];
+    if (!pair) return;
+    try {
+      const data = await fetchJSON(`https://api.binance.com/api/v3/ticker/price?symbol=${pair}`);
+      if (data?.price) prices[id] = parseFloat(data.price);
+    } catch (e) { console.error(`[Binance] ${pair}:`, e.message); }
+  });
+  await Promise.all(fetches);
   return prices;
 }
 
 // Crypto: CryptoCompare
 async function fetchCryptoCompare(ids) {
-  const map = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', 'the-open-network': 'TON' };
+  const map = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', dogecoin: 'DOGE', 'the-open-network': 'TON', ripple: 'XRP', binancecoin: 'BNB', cardano: 'ADA' };
   const fsyms = ids.map(id => map[id]).filter(Boolean).join(',');
   if (!fsyms) return {};
   const prices = {};
@@ -268,39 +257,31 @@ async function fetchForexPrices(assets) {
   return prices;
 }
 
-// Gold/Silver: metals.live
+// Gold: multiple fallback sources
 async function fetchMetalPrices() {
   const prices = {};
+  // Source 1: metals.live
   try {
     const data = await fetchJSON('https://api.metals.live/v1/spot');
     if (Array.isArray(data)) {
       for (const item of data) {
         if (item.gold) prices['gold'] = item.gold;
-        if (item.silver) prices['silver'] = item.silver;
       }
     }
-  } catch (e) { console.error('[Metals]', e.message); }
+  } catch (e) { console.error('[Metals.live]', e.message); }
+  // Source 2: GoldAPI via CoinGecko (PAX Gold as proxy)
   if (!prices['gold']) {
     try {
-      const data = await fetchJSON('https://api.metalpriceapi.com/v1/latest?api_key=demo&base=USD&currencies=XAU');
-      if (data?.rates?.XAU) prices['gold'] = 1 / data.rates.XAU;
-    } catch (e) { /* skip */ }
+      const data = await fetchJSON('https://api.coingecko.com/api/v3/simple/price?ids=pax-gold&vs_currencies=usd');
+      if (data?.['pax-gold']?.usd) prices['gold'] = data['pax-gold'].usd;
+    } catch (e) { console.error('[Gold-CoinGecko]', e.message); }
   }
-  return prices;
-}
-
-// Stocks/Oil: Yahoo Finance
-async function fetchYahooPrices(assets) {
-  const prices = {};
-  for (const a of assets) {
+  // Source 3: Binance PAXGUSDT
+  if (!prices['gold']) {
     try {
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${a.ticker}?interval=1m&range=1d`;
-      const data = await fetchJSON(url);
-      const meta = data?.chart?.result?.[0]?.meta;
-      if (meta?.regularMarketPrice) {
-        prices[a.id] = meta.regularMarketPrice;
-      }
-    } catch (e) { console.error(`[Yahoo] ${a.ticker} failed:`, e.message); }
+      const data = await fetchJSON('https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT');
+      if (data?.price) prices['gold'] = parseFloat(data.price);
+    } catch (e) { console.error('[Gold-Binance]', e.message); }
   }
   return prices;
 }
@@ -343,36 +324,42 @@ async function fetchCurrentPrices(assetIds) {
   const cryptoIds = assetIds.filter(id => assetMap[id]?.type === 'crypto');
   const forexAssets = assetIds.map(id => assetMap[id]).filter(a => a?.type === 'forex');
   const metalIds = assetIds.filter(id => assetMap[id]?.type === 'metal');
-  const yahooAssets = assetIds.map(id => assetMap[id]).filter(a => a?.type === 'yahoo');
   const gasIds = assetIds.filter(id => assetMap[id]?.type === 'ethgas');
 
   const tasks = [];
 
+  // Try ALL crypto sources in parallel, merge results (first non-null wins)
   if (cryptoIds.length > 0) {
     tasks.push(
-      fetchCryptoGecko(cryptoIds)
-        .catch(() => fetchCryptoBinance(cryptoIds))
-        .catch(() => fetchCryptoCompare(cryptoIds))
-        .catch(() => ({}))
-        .then(p => Object.assign(prices, p))
+      Promise.allSettled([
+        fetchCryptoBinance(cryptoIds),
+        fetchCryptoGecko(cryptoIds),
+        fetchCryptoCompare(cryptoIds),
+      ]).then(results => {
+        for (const r of results) {
+          if (r.status === 'fulfilled' && r.value) {
+            for (const [id, price] of Object.entries(r.value)) {
+              if (price && !prices[id]) prices[id] = price;
+            }
+          }
+        }
+        console.log('[Price] Crypto results:', cryptoIds.map(id => `${id}=${prices[id] || 'MISS'}`).join(', '));
+      })
     );
   }
   if (forexAssets.length > 0) {
-    tasks.push(fetchForexPrices(forexAssets).catch(() => ({})).then(p => Object.assign(prices, p)));
+    tasks.push(fetchForexPrices(forexAssets).catch(e => { console.error('[Price] Forex fail:', e.message); return {}; }).then(p => Object.assign(prices, p)));
   }
   if (metalIds.length > 0) {
-    tasks.push(fetchMetalPrices().catch(() => ({})).then(p => Object.assign(prices, p)));
-  }
-  if (yahooAssets.length > 0) {
-    tasks.push(fetchYahooPrices(yahooAssets).catch(() => ({})).then(p => Object.assign(prices, p)));
+    tasks.push(fetchMetalPrices().catch(e => { console.error('[Price] Metal fail:', e.message); return {}; }).then(p => Object.assign(prices, p)));
   }
   if (gasIds.length > 0) {
-    tasks.push(fetchEthGasPrice().catch(() => ({})).then(p => Object.assign(prices, p)));
+    tasks.push(fetchEthGasPrice().catch(e => { console.error('[Price] Gas fail:', e.message); return {}; }).then(p => Object.assign(prices, p)));
   }
 
   await Promise.all(tasks);
 
-  // Fill from cache if any are missing, and update cache for successful ones
+  // Fill from cache for missing, update cache for successful
   for (const id of assetIds) {
     if (prices[id]) {
       setCachedPrice(id, prices[id]);
@@ -380,20 +367,15 @@ async function fetchCurrentPrices(assetIds) {
       const cached = getCachedPrice(id);
       if (cached) {
         prices[id] = cached;
-        console.log(`[Price] Using cached price for ${id}: ${cached}`);
+        console.log(`[Price] Cache hit: ${id}=${cached}`);
       }
     }
   }
 
-  // Last resort for crypto: try Binance separately for each missing
-  const stillMissing = assetIds.filter(id => !prices[id] && assetMap[id]?.type === 'crypto');
-  if (stillMissing.length > 0) {
-    try {
-      const binance = await fetchCryptoBinance(stillMissing);
-      Object.assign(prices, binance);
-      for (const id of stillMissing) { if (binance[id]) setCachedPrice(id, binance[id]); }
-    } catch (e) { /* skip */ }
-  }
+  const got = assetIds.filter(id => prices[id]).length;
+  const missed = assetIds.filter(id => !prices[id]);
+  if (missed.length > 0) console.error('[Price] Still missing:', missed.join(', '));
+  console.log(`[Price] Got ${got}/${assetIds.length} prices`);
 
   return prices;
 }
@@ -403,17 +385,20 @@ async function fetchSparkline(assetId) {
   if (!asset) return null;
 
   if (asset.type === 'crypto') {
+    // Try CoinGecko first
     try {
       const data = await fetchJSON(`https://api.coingecko.com/api/v3/coins/${assetId}/market_chart?vs_currency=usd&days=1`);
-      if (data?.prices) return data.prices.map(p => p[1]);
+      if (data?.prices?.length > 0) return data.prices.map(p => p[1]);
     } catch (e) { /* skip */ }
-  }
-  if (asset.type === 'yahoo') {
-    try {
-      const data = await fetchJSON(`https://query1.finance.yahoo.com/v8/finance/chart/${asset.ticker}?interval=5m&range=1d`);
-      const closes = data?.chart?.result?.[0]?.indicators?.quote?.[0]?.close;
-      if (closes) return closes.filter(c => c != null);
-    } catch (e) { /* skip */ }
+    // Fallback: Binance klines
+    const binMap = { bitcoin: 'BTCUSDT', ethereum: 'ETHUSDT', solana: 'SOLUSDT', dogecoin: 'DOGEUSDT', 'the-open-network': 'TONUSDT', ripple: 'XRPUSDT', binancecoin: 'BNBUSDT', cardano: 'ADAUSDT' };
+    const sym = binMap[assetId];
+    if (sym) {
+      try {
+        const data = await fetchJSON(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=5m&limit=288`);
+        if (Array.isArray(data)) return data.map(k => parseFloat(k[4])); // close prices
+      } catch (e) { /* skip */ }
+    }
   }
   return null;
 }

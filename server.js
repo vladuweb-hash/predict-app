@@ -380,6 +380,21 @@ app.post('/api/admin/reset-user', async (req, res) => {
   }
 });
 
+app.post('/api/admin/reset-all', async (req, res) => {
+  try {
+    if (req.headers['x-admin-key'] !== process.env.ADMIN_KEY) return res.status(403).json({ error: 'Forbidden' });
+    const users = await db.getAllUsers();
+    let count = 0;
+    for (const u of users) {
+      await db.resetUser(u.telegram_id);
+      count++;
+    }
+    res.json({ ok: true, message: `Reset ${count} users` });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // --- Start ---
 
 async function start() {

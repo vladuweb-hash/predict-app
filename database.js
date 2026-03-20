@@ -934,6 +934,20 @@ async function getLeaderboard() {
   return rows;
 }
 
+async function resetUser(telegramId) {
+  const user = await getUser(telegramId);
+  if (!user) return { ok: false, error: 'User not found' };
+  await pool.query('DELETE FROM round_questions WHERE round_id IN (SELECT id FROM rounds WHERE user_id=$1)', [telegramId]);
+  await pool.query('DELETE FROM rounds WHERE user_id=$1', [telegramId]);
+  await pool.query('DELETE FROM duel_questions WHERE duel_id IN (SELECT id FROM duels WHERE creator_id=$1 OR opponent_id=$1)', [telegramId]);
+  await pool.query('DELETE FROM duels WHERE creator_id=$1 OR opponent_id=$1', [telegramId]);
+  await pool.query('DELETE FROM raffle_tickets WHERE user_id=$1', [telegramId]);
+  await pool.query('DELETE FROM achievements WHERE user_id=$1', [telegramId]);
+  await pool.query(`UPDATE users SET total_rounds=0, total_5of5=0, streak_5of5=0, best_streak=0,
+    duel_wins=0, duel_losses=0, duel_draws=0 WHERE telegram_id=$1`, [telegramId]);
+  return { ok: true, message: `User ${telegramId} reset` };
+}
+
 module.exports = {
   pool, initDB, ASSETS, DRAW_THRESHOLD, ACHIEVEMENT_DEFS,
   fetchCurrentPrices, fetchSparkline, getWeekKey,
@@ -944,4 +958,5 @@ module.exports = {
   getDuelQuestions, joinDuel, answerDuelQuestion, resolveDuel, getPendingDuels, getUserDuels,
   addRaffleTicket, getRaffleTickets, getUserTickets, getRaffle, drawRaffle,
   getAchievements, grantAchievement, checkAchievements, getLeaderboard,
+  resetUser,
 };

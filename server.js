@@ -349,6 +349,19 @@ app.post('/api/admin/raffle/draw', async (req, res) => {
   }
 });
 
+app.post('/api/admin/reset-user', async (req, res) => {
+  try {
+    if (req.headers['x-admin-key'] !== process.env.ADMIN_KEY) return res.status(403).json({ error: 'Forbidden' });
+    const { telegram_id } = req.body;
+    if (!telegram_id) return res.status(400).json({ error: 'telegram_id required' });
+    const result = await db.resetUser(telegram_id);
+    res.json(result);
+  } catch (e) {
+    console.error('[Admin/reset]', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // --- Start ---
 
 async function start() {

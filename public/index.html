@@ -462,6 +462,8 @@ function renderResults(round, questions) {
 
 // --- Chart ---
 
+const CC_SYM = { bitcoin:'BTC', ethereum:'ETH', solana:'SOL', dogecoin:'DOGE', 'the-open-network':'TON', ripple:'XRP', binancecoin:'BNB', cardano:'ADA' };
+
 async function loadChart(assetId) {
   const canvas = document.getElementById('chart');
   if (!canvas) return;
@@ -469,10 +471,16 @@ async function loadChart(assetId) {
 
   let prices = sparklineCache[assetId];
   if (!prices) {
-    try {
-      const data = await api(`/api/sparkline/${assetId}`);
-      prices = data.prices || [];
-    } catch (e) { prices = []; }
+    const sym = CC_SYM[assetId];
+    if (sym) {
+      try {
+        const r = await fetch(`https://min-api.cryptocompare.com/data/v2/histohour?fsym=${sym}&tsym=USD&limit=24`);
+        const j = await r.json();
+        prices = j?.Data?.Data?.map(p => p.close) || [];
+      } catch (e) { prices = []; }
+    } else {
+      prices = [];
+    }
     sparklineCache[assetId] = prices;
   }
   if (prices.length < 2) {

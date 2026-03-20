@@ -250,7 +250,7 @@ async function loadPlay() {
     const questions = data.questions;
     const firstUnanswered = questions.findIndex(q => !q.user_answer);
     currentQuestionIdx = firstUnanswered >= 0 ? firstUnanswered : questions.length;
-    if (currentQuestionIdx >= 5) {
+    if (currentQuestionIdx >= questions.length) {
       renderWaiting(data.round);
     } else {
       renderQuestion(data.round, questions, currentQuestionIdx);
@@ -285,13 +285,14 @@ function renderStartScreen() {
     </div>
     <div class="card" style="text-align:center;padding:40px 20px">
       <div style="font-size:64px;margin-bottom:16px">📈</div>
-      <p style="color:var(--text2);margin-bottom:20px">Угадай направление цены 5 криптовалют.<br>Результат через 1 час.</p>
-      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:24px">
-        <span style="background:var(--bg);padding:6px 12px;border-radius:8px;font-size:13px">₿ BTC</span>
-        <span style="background:var(--bg);padding:6px 12px;border-radius:8px;font-size:13px">Ξ ETH</span>
-        <span style="background:var(--bg);padding:6px 12px;border-radius:8px;font-size:13px">💎 TON</span>
-        <span style="background:var(--bg);padding:6px 12px;border-radius:8px;font-size:13px">🐕 DOGE</span>
-        <span style="background:var(--bg);padding:6px 12px;border-radius:8px;font-size:13px">◎ SOL</span>
+      <p style="color:var(--text2);margin-bottom:20px">Угадай направление цены 5 активов.<br>Крипта, валюты, золото, акции — результат через 1 час.</p>
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:24px">
+        <span style="background:var(--bg);padding:5px 10px;border-radius:8px;font-size:12px">₿ BTC</span>
+        <span style="background:var(--bg);padding:5px 10px;border-radius:8px;font-size:12px">💵 USD/RUB</span>
+        <span style="background:var(--bg);padding:5px 10px;border-radius:8px;font-size:12px">🥇 Золото</span>
+        <span style="background:var(--bg);padding:5px 10px;border-radius:8px;font-size:12px">🛢️ Нефть</span>
+        <span style="background:var(--bg);padding:5px 10px;border-radius:8px;font-size:12px">🍎 AAPL</span>
+        <span style="background:var(--bg);padding:5px 10px;border-radius:8px;font-size:12px">⛽ Gas</span>
       </div>
       <button class="btn btn-accent" onclick="startRound()">Начать раунд</button>
     </div>
@@ -762,7 +763,7 @@ async function loadProfile() {
 }
 
 function shareInvite() {
-  const text = '🎯 Предскажи цены криптовалют и выигрывай Stars!';
+  const text = '🎯 Предскажи цены крипты, акций, золота и выигрывай Stars!';
   const name = botName || 'your_bot';
   const link = `https://t.me/${name}?startapp=ref_${currentUser.telegram_id}`;
   const url = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
@@ -783,8 +784,11 @@ async function buyPremium() {
 
 // --- Helpers ---
 
-function formatPrice(price, asset) {
+function formatPrice(price, assetId) {
   if (!price) return '—';
+  if (assetId === 'usd-rub') return price.toFixed(2) + ' ₽';
+  if (assetId === 'eth-gas') return price.toFixed(1) + ' gwei';
+  if (assetId === 'eur-usd') return '$' + price.toFixed(4);
   if (price < 0.01) return '$' + price.toFixed(6);
   if (price < 1) return '$' + price.toFixed(4);
   if (price < 100) return '$' + price.toFixed(2);

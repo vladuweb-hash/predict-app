@@ -214,8 +214,14 @@ async function auth() {
   const urlParams = new URLSearchParams(window.location.search);
   const ref = urlParams.get('ref') || urlParams.get('startapp') || '';
 
-  const data = await apiPost('/api/auth', { initData, ref, chatId: tg?.initDataUnsafe?.user?.id });
-  if (!data.ok) { content.innerHTML = '<div class="loading">Ошибка авторизации</div>'; return; }
+  let data;
+  try {
+    data = await apiPost('/api/auth', { initData, ref, chatId: tg?.initDataUnsafe?.user?.id });
+  } catch (e) {
+    content.innerHTML = '<div class="loading">Сервер не отвечает. Попробуй позже.</div>';
+    return;
+  }
+  if (!data.ok) { content.innerHTML = `<div class="loading">Ошибка: ${data.error || 'неизвестная'}</div>`; return; }
 
   currentUser = data.user;
   botName = data.botUsername || '';

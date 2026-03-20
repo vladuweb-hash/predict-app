@@ -62,7 +62,10 @@ app.post('/api/auth', async (req, res) => {
   try {
     const { initData, ref } = req.body;
     const tgUser = validateTelegramData(initData);
-    if (!tgUser) return res.status(401).json({ error: 'Unauthorized' });
+    if (!tgUser) {
+      console.error('[Auth] Validation failed. initData length:', initData?.length, 'BOT_TOKEN set:', !!process.env.BOT_TOKEN);
+      return res.json({ ok: false, error: 'auth_validation_failed' });
+    }
 
     let user = await db.getUser(tgUser.id);
     const isNew = !user;
@@ -70,9 +73,13 @@ app.post('/api/auth', async (req, res) => {
       user = await db.createUser(tgUser, ref || null);
     }
 
-    if (req.body.chatId) {
-      user.chat_id = req.body.chatId;
-      await db.saveUser(user);
+    if (req.body.chatId && user) {
+      try {
+        user.chat_id = req.body.chatId;
+        await db.saveUser(user);
+      } catch (saveErr) {
+        console.error('[Auth] saveUser failed:', saveErr.message);
+      }
     }
 
     res.json({
@@ -81,8 +88,8 @@ app.post('/api/auth', async (req, res) => {
       weekKey: db.getWeekKey()
     });
   } catch (e) {
-    console.error('[Auth]', e);
-    res.status(500).json({ error: 'Server error' });
+    console.error('[Auth]', e.message, e.stack);
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 

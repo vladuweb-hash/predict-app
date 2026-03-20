@@ -122,6 +122,24 @@ async function initDB() {
       UNIQUE(user_id, type)
     );
   `);
+
+  // Add missing columns to users table (for existing DBs created before v3)
+  const alterQueries = [
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_5of5 INTEGER DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS best_streak INTEGER DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS total_rounds INTEGER DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS total_5of5 INTEGER DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS duel_wins INTEGER DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS duel_losses INTEGER DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS duel_draws INTEGER DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS notifications BOOLEAN DEFAULT true',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS chat_id BIGINT',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by BIGINT',
+  ];
+  for (const q of alterQueries) {
+    try { await pool.query(q); } catch (e) { /* column already exists */ }
+  }
+
   console.log('[DB] Schema ready');
 }
 

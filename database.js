@@ -443,11 +443,24 @@ async function fetchCurrentPrices(assetIds) {
 
 const BINANCE_MAP = { bitcoin: 'BTCUSDT', ethereum: 'ETHUSDT', solana: 'SOLUSDT', dogecoin: 'DOGEUSDT', 'the-open-network': 'TONUSDT', ripple: 'XRPUSDT', binancecoin: 'BNBUSDT', cardano: 'ADAUSDT', gold: 'PAXGUSDT' };
 
+const COINCAP_MAP = { bitcoin: 'bitcoin', ethereum: 'ethereum', solana: 'solana', dogecoin: 'dogecoin', 'the-open-network': 'toncoin', ripple: 'xrp', binancecoin: 'binance-coin', cardano: 'cardano' };
+
 async function fetchSparkline(assetId) {
   const asset = ASSETS.find(a => a.id === assetId);
   if (!asset) return null;
 
-  // Binance klines — works for all crypto + gold (via PAXG)
+  // Source 1: CoinCap history (most reliable from cloud)
+  const capId = COINCAP_MAP[assetId];
+  if (capId) {
+    try {
+      const now = Date.now();
+      const start = now - 24 * 60 * 60 * 1000;
+      const data = await fetchJSON(`https://api.coincap.io/v2/assets/${capId}/history?interval=m15&start=${start}&end=${now}`);
+      if (data?.data?.length > 2) return data.data.map(p => parseFloat(p.priceUsd));
+    } catch (e) { console.error(`[Sparkline] CoinCap ${capId}:`, e.message); }
+  }
+
+  // Source 2: Binance klines
   const sym = BINANCE_MAP[assetId];
   if (sym) {
     try {
@@ -456,7 +469,7 @@ async function fetchSparkline(assetId) {
     } catch (e) { console.error(`[Sparkline] Binance ${sym}:`, e.message); }
   }
 
-  // CoinGecko for crypto
+  // Source 3: CoinGecko market_chart
   if (asset.type === 'crypto') {
     try {
       const data = await fetchJSON(`https://api.coingecko.com/api/v3/coins/${assetId}/market_chart?vs_currency=usd&days=1`);

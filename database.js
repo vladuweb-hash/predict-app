@@ -935,17 +935,24 @@ async function getLeaderboard() {
 }
 
 async function resetUser(telegramId) {
-  const user = await getUser(telegramId);
-  if (!user) return { ok: false, error: 'User not found' };
-  await pool.query('DELETE FROM round_questions WHERE round_id IN (SELECT id FROM rounds WHERE user_id=$1)', [telegramId]);
-  await pool.query('DELETE FROM rounds WHERE user_id=$1', [telegramId]);
-  await pool.query('DELETE FROM duel_questions WHERE duel_id IN (SELECT id FROM duels WHERE creator_id=$1 OR opponent_id=$1)', [telegramId]);
-  await pool.query('DELETE FROM duels WHERE creator_id=$1 OR opponent_id=$1', [telegramId]);
-  await pool.query('DELETE FROM raffle_tickets WHERE user_id=$1', [telegramId]);
-  await pool.query('DELETE FROM achievements WHERE user_id=$1', [telegramId]);
-  await pool.query(`UPDATE users SET total_rounds=0, total_5of5=0, streak_5of5=0, best_streak=0,
-    duel_wins=0, duel_losses=0, duel_draws=0 WHERE telegram_id=$1`, [telegramId]);
-  return { ok: true, message: `User ${telegramId} reset` };
+  try {
+    const user = await getUser(telegramId);
+    if (!user) return { ok: false, error: 'User not found' };
+    const tid = parseInt(telegramId);
+    await pool.query('DELETE FROM round_questions WHERE round_id IN (SELECT id FROM rounds WHERE user_id=$1)', [tid]);
+    await pool.query('DELETE FROM rounds WHERE user_id=$1', [tid]);
+    await pool.query('DELETE FROM duel_questions WHERE duel_id IN (SELECT id FROM duels WHERE creator_id=$1 OR opponent_id=$1)', [tid]);
+    await pool.query('DELETE FROM duels WHERE creator_id=$1 OR opponent_id=$1', [tid]);
+    await pool.query('DELETE FROM raffle_tickets WHERE user_id=$1', [tid]);
+    await pool.query('DELETE FROM premium_grants WHERE user_id=$1', [tid]);
+    await pool.query('DELETE FROM achievements WHERE user_id=$1', [tid]);
+    await pool.query(`UPDATE users SET total_rounds=0, total_5of5=0, streak_5of5=0, best_streak=0,
+      duel_wins=0, duel_losses=0, duel_draws=0 WHERE telegram_id=$1`, [tid]);
+    return { ok: true, message: `User ${tid} reset` };
+  } catch (e) {
+    console.error('[resetUser]', e);
+    return { ok: false, error: e.message };
+  }
 }
 
 module.exports = {

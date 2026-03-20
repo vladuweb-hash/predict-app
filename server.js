@@ -357,8 +357,8 @@ app.post('/api/admin/reset-user', async (req, res) => {
     const result = await db.resetUser(telegram_id);
     res.json(result);
   } catch (e) {
-    console.error('[Admin/reset]', e);
-    res.status(500).json({ error: 'Server error' });
+    console.error('[Admin/reset]', e.message, e.stack);
+    res.status(500).json({ error: e.message });
   }
 });
 

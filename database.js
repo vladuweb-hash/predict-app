@@ -443,28 +443,26 @@ async function fetchCurrentPrices(assetIds) {
 
 const BINANCE_MAP = { bitcoin: 'BTCUSDT', ethereum: 'ETHUSDT', solana: 'SOLUSDT', dogecoin: 'DOGEUSDT', 'the-open-network': 'TONUSDT', ripple: 'XRPUSDT', binancecoin: 'BNBUSDT', cardano: 'ADAUSDT', gold: 'PAXGUSDT' };
 
-const COINCAP_MAP = { bitcoin: 'bitcoin', ethereum: 'ethereum', solana: 'solana', dogecoin: 'dogecoin', 'the-open-network': 'toncoin', ripple: 'xrp', binancecoin: 'binance-coin', cardano: 'cardano' };
+const CRYPTO_SYM_MAP = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', dogecoin: 'DOGE', 'the-open-network': 'TON', ripple: 'XRP', binancecoin: 'BNB', cardano: 'ADA' };
 
 async function fetchSparkline(assetId) {
   const asset = ASSETS.find(a => a.id === assetId);
   if (!asset) return null;
 
-  // Source 1: CoinCap history (most reliable from cloud)
-  const capId = COINCAP_MAP[assetId];
-  if (capId) {
+  // Source 1: CryptoCompare histohour (works from cloud IPs)
+  const ccSym = CRYPTO_SYM_MAP[assetId];
+  if (ccSym) {
     try {
-      const now = Date.now();
-      const start = now - 24 * 60 * 60 * 1000;
-      const data = await fetchJSON(`https://api.coincap.io/v2/assets/${capId}/history?interval=m15&start=${start}&end=${now}`);
-      if (data?.data?.length > 2) return data.data.map(p => parseFloat(p.priceUsd));
-    } catch (e) { console.error(`[Sparkline] CoinCap ${capId}:`, e.message); }
+      const data = await fetchJSON(`https://min-api.cryptocompare.com/data/v2/histohour?fsym=${ccSym}&tsym=USD&limit=24`);
+      if (data?.Data?.Data?.length > 2) return data.Data.Data.map(p => p.close);
+    } catch (e) { console.error(`[Sparkline] CryptoCompare ${ccSym}:`, e.message); }
   }
 
   // Source 2: Binance klines
   const sym = BINANCE_MAP[assetId];
   if (sym) {
     try {
-      const data = await fetchJSON(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=5m&limit=288`);
+      const data = await fetchJSON(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=1h&limit=24`);
       if (Array.isArray(data) && data.length > 2) return data.map(k => parseFloat(k[4]));
     } catch (e) { console.error(`[Sparkline] Binance ${sym}:`, e.message); }
   }

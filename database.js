@@ -196,7 +196,7 @@ function getWeekKey() {
 // --- Price fetching ---
 
 const HEADERS = {
-  'User-Agent': 'PredictApp/3.0',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   'Accept': 'application/json',
 };
 
@@ -255,6 +255,40 @@ async function fetchCryptoCompare(ids) {
       if (ids.includes(id) && data[sym]?.USD) prices[id] = data[sym].USD;
     }
   } catch (e) { console.error('[CryptoCompare]', e.message); }
+  return prices;
+}
+
+// Crypto: CoinCap (very reliable from cloud IPs)
+async function fetchCoinCap(ids) {
+  const map = { bitcoin: 'bitcoin', ethereum: 'ethereum', solana: 'solana', dogecoin: 'dogecoin', 'the-open-network': 'toncoin', ripple: 'xrp', binancecoin: 'binance-coin', cardano: 'cardano' };
+  const prices = {};
+  const capIds = ids.map(id => map[id]).filter(Boolean).join(',');
+  if (!capIds) return {};
+  try {
+    const data = await fetchJSON(`https://api.coincap.io/v2/assets?ids=${capIds}`);
+    if (data?.data) {
+      for (const item of data.data) {
+        for (const [id, capId] of Object.entries(map)) {
+          if (capId === item.id && item.priceUsd) prices[id] = parseFloat(item.priceUsd);
+        }
+      }
+    }
+  } catch (e) { console.error('[CoinCap]', e.message); }
+  return prices;
+}
+
+// Crypto: CoinPaprika (no key needed, cloud-friendly)
+async function fetchCoinPaprika(ids) {
+  const map = { bitcoin: 'btc-bitcoin', ethereum: 'eth-ethereum', solana: 'sol-solana', dogecoin: 'doge-dogecoin', 'the-open-network': 'toncoin-the-open-network', ripple: 'xrp-xrp', binancecoin: 'bnb-binance-coin', cardano: 'ada-cardano' };
+  const prices = {};
+  for (const id of ids) {
+    const papId = map[id];
+    if (!papId) continue;
+    try {
+      const data = await fetchJSON(`https://api.coinpaprika.com/v1/tickers/${papId}`);
+      if (data?.quotes?.USD?.price) prices[id] = data.quotes.USD.price;
+    } catch (e) { /* skip individual failures */ }
+  }
   return prices;
 }
 
@@ -355,14 +389,21 @@ async function fetchCurrentPrices(assetIds) {
         fetchCryptoBinance(cryptoIds),
         fetchCryptoGecko(cryptoIds),
         fetchCryptoCompare(cryptoIds),
+        fetchCoinCap(cryptoIds),
+        fetchCoinPaprika(cryptoIds),
       ]).then(results => {
-        for (const r of results) {
+        const names = ['Binance', 'CoinGecko', 'CryptoCompare', 'CoinCap', 'CoinPaprika'];
+        results.forEach((r, i) => {
           if (r.status === 'fulfilled' && r.value) {
+            const count = Object.keys(r.value).length;
+            console.log(`[Price] ${names[i]}: ${count} prices`);
             for (const [id, price] of Object.entries(r.value)) {
               if (price && !prices[id]) prices[id] = price;
             }
+          } else {
+            console.error(`[Price] ${names[i]}: FAILED`, r.reason?.message || '');
           }
-        }
+        });
         console.log('[Price] Crypto results:', cryptoIds.map(id => `${id}=${prices[id] || 'MISS'}`).join(', '));
       })
     );

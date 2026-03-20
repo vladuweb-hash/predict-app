@@ -175,6 +175,17 @@ app.get('/api/rounds/history', authMiddleware, async (req, res) => {
   }
 });
 
+// --- Debug: test price APIs ---
+app.get('/api/debug/prices', async (req, res) => {
+  try {
+    const testIds = ['bitcoin', 'ethereum'];
+    const prices = await db.fetchCurrentPrices(testIds);
+    res.json({ ok: true, prices, timestamp: new Date().toISOString() });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
+
 // --- Sparkline (chart data) ---
 
 app.get('/api/sparkline/:assetId', async (req, res) => {

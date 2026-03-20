@@ -1,2202 +1,840 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Предскажи</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <style>
-    :root {
-      --bg: #0f0f1a;
-      --card: #1a1a2e;
-      --card-hover: #22223a;
-      --accent: #6c5ce7;
-      --accent2: #a29bfe;
-      --green: #00cec9;
-      --orange: #fdcb6e;
-      --red: #ff6b6b;
-      --text: #ffffff;
-      --text2: #b2b2cc;
-      --radius: 16px;
-    }
-
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    body {
-      font-family: -apple-system, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      overflow-x: hidden;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    .app {
-      max-width: 480px;
-      margin: 0 auto;
-      padding: 16px;
-      padding-bottom: 80px;
-    }
-
-    /* --- Header --- */
-    .header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 0 20px;
-    }
-
-    .header-left h1 {
-      font-size: 22px;
-      font-weight: 700;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-
-    .header-left span {
-      font-size: 12px;
-      color: var(--text2);
-    }
-
-    .score-badge {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      background: var(--card);
-      padding: 8px 14px;
-      border-radius: 20px;
-      font-weight: 600;
-      font-size: 15px;
-    }
-
-    .score-badge .icon { font-size: 18px; }
-
-    /* --- Nav Tabs --- */
-    .nav {
-      display: flex;
-      gap: 4px;
-      background: var(--card);
-      border-radius: 12px;
-      padding: 4px;
-      margin-bottom: 12px;
-    }
-
-    .nav-btn {
-      flex: 1;
-      padding: 10px 0;
-      border: none;
-      background: transparent;
-      color: var(--text2);
-      font-size: 13px;
-      font-weight: 600;
-      border-radius: 10px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .nav-btn.active {
-      background: var(--accent);
-      color: white;
-    }
-
-    /* --- Timeframe Filter --- */
-    .timeframe-filter {
-      display: flex;
-      gap: 6px;
-      margin-bottom: 16px;
-      overflow-x: auto;
-      scrollbar-width: none;
-    }
-
-    .timeframe-filter::-webkit-scrollbar { display: none; }
-
-    .tf-btn {
-      padding: 7px 14px;
-      border: 1.5px solid rgba(108, 92, 231, 0.3);
-      background: transparent;
-      color: var(--text2);
-      font-size: 12px;
-      font-weight: 600;
-      border-radius: 20px;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: all 0.2s;
-    }
-
-    .tf-btn.active {
-      border-color: var(--accent);
-      background: rgba(108, 92, 231, 0.2);
-      color: var(--text);
-    }
-
-    /* --- Question Card --- */
-    .question-card {
-      background: var(--card);
-      border-radius: var(--radius);
-      padding: 24px 20px;
-      margin-bottom: 14px;
-      animation: fadeUp 0.3s ease;
-    }
-
-    .question-card.resolved-correct { border-left: 3px solid var(--green); }
-    .question-card.resolved-wrong { border-left: 3px solid var(--red); }
-
-    @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(12px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .question-meta {
-      display: flex;
-      gap: 6px;
-      margin-bottom: 12px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-
-    .question-category {
-      display: inline-block;
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--accent2);
-      background: rgba(108, 92, 231, 0.15);
-      padding: 4px 10px;
-      border-radius: 6px;
-    }
-
-    .question-timeframe {
-      display: inline-block;
-      font-size: 11px;
-      font-weight: 600;
-      padding: 4px 10px;
-      border-radius: 6px;
-    }
-
-    .tf-tomorrow { color: var(--orange); background: rgba(253, 203, 110, 0.15); }
-    .tf-week { color: #74b9ff; background: rgba(116, 185, 255, 0.15); }
-    .tf-month { color: #a29bfe; background: rgba(162, 155, 254, 0.15); }
-
-    .resolved-badge {
-      font-size: 11px;
-      font-weight: 600;
-      padding: 4px 10px;
-      border-radius: 6px;
-      margin-left: auto;
-    }
-
-    .resolved-badge.correct { color: var(--green); background: rgba(0, 206, 201, 0.15); }
-    .resolved-badge.wrong { color: var(--red); background: rgba(255, 107, 107, 0.15); }
-    .resolved-badge.pending { color: var(--text2); background: rgba(178, 178, 204, 0.1); }
-
-    .question-text {
-      font-size: 17px;
-      font-weight: 600;
-      line-height: 1.4;
-      margin-bottom: 20px;
-    }
-
-    .options {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .option-btn {
-      position: relative;
-      width: 100%;
-      padding: 14px 16px;
-      border: 2px solid rgba(108, 92, 231, 0.3);
-      background: rgba(108, 92, 231, 0.08);
-      color: var(--text);
-      font-size: 15px;
-      font-weight: 500;
-      border-radius: 12px;
-      cursor: pointer;
-      transition: all 0.2s;
-      overflow: hidden;
-      text-align: left;
-    }
-
-    .option-btn:active { transform: scale(0.98); }
-    .option-btn:hover { border-color: var(--accent); background: rgba(108, 92, 231, 0.15); }
-
-    .option-btn.selected { border-color: var(--green); background: rgba(0, 206, 201, 0.15); }
-    .option-btn.selected.was-correct { border-color: var(--green); }
-    .option-btn.selected.was-wrong { border-color: var(--red); background: rgba(255, 107, 107, 0.1); }
-    .option-btn.is-correct-answer { border-color: var(--green); background: rgba(0, 206, 201, 0.1); }
-
-    .option-btn.voted { cursor: default; pointer-events: none; }
-
-    .option-btn .bar {
-      position: absolute;
-      left: 0; top: 0;
-      height: 100%;
-      border-radius: 10px;
-      transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
-      z-index: 0;
-    }
-
-    .option-btn.selected .bar { background: rgba(0, 206, 201, 0.2); }
-    .option-btn.selected.was-wrong .bar { background: rgba(255, 107, 107, 0.15); }
-    .option-btn:not(.selected) .bar { background: rgba(108, 92, 231, 0.12); }
-    .option-btn.is-correct-answer .bar { background: rgba(0, 206, 201, 0.15); }
-
-    .option-btn .label {
-      position: relative;
-      z-index: 1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .option-btn .percent { font-weight: 700; font-size: 14px; color: var(--text2); }
-    .option-btn.selected .percent { color: var(--green); }
-    .option-btn.selected.was-wrong .percent { color: var(--red); }
-
-    .points-popup {
-      text-align: center;
-      padding: 8px;
-      color: var(--green);
-      font-weight: 600;
-      font-size: 14px;
-      animation: popIn 0.4s ease;
-    }
-
-    @keyframes popIn {
-      0% { opacity: 0; transform: scale(0.8); }
-      50% { transform: scale(1.1); }
-      100% { opacity: 1; transform: scale(1); }
-    }
-
-    .card-footer {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-top: 10px;
-      font-size: 12px;
-      color: var(--text2);
-    }
-
-    /* --- Leaderboard --- */
-    .leaderboard-item {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 14px 16px;
-      background: var(--card);
-      border-radius: var(--radius);
-      margin-bottom: 8px;
-      animation: fadeUp 0.3s ease;
-    }
-
-    .leaderboard-item.top-1 { border: 1px solid #ffd700; }
-    .leaderboard-item.top-2 { border: 1px solid #c0c0c0; }
-    .leaderboard-item.top-3 { border: 1px solid #cd7f32; }
-
-    .lb-rank {
-      width: 32px; height: 32px;
-      display: flex; align-items: center; justify-content: center;
-      font-weight: 700; font-size: 14px;
-      border-radius: 10px;
-      background: rgba(108, 92, 231, 0.15);
-      color: var(--accent2);
-      flex-shrink: 0;
-    }
-
-    .top-1 .lb-rank { background: rgba(255, 215, 0, 0.2); color: #ffd700; }
-    .top-2 .lb-rank { background: rgba(192, 192, 192, 0.2); color: #c0c0c0; }
-    .top-3 .lb-rank { background: rgba(205, 127, 50, 0.2); color: #cd7f32; }
-
-    .lb-info { flex: 1; }
-    .lb-name { font-weight: 600; font-size: 15px; }
-    .lb-stats { font-size: 12px; color: var(--text2); margin-top: 2px; }
-    .lb-score { font-weight: 700; font-size: 16px; color: var(--accent2); }
-
-    /* --- Profile --- */
-    .profile-card {
-      background: var(--card);
-      border-radius: var(--radius);
-      padding: 28px 20px;
-      text-align: center;
-      margin-bottom: 16px;
-    }
-
-    .profile-avatar {
-      width: 72px; height: 72px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, var(--accent), var(--green));
-      display: flex; align-items: center; justify-content: center;
-      font-size: 30px; font-weight: 700;
-      margin: 0 auto 12px;
-    }
-
-    .profile-name { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
-    .profile-rank { font-size: 13px; color: var(--text2); }
-
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
-      margin-top: 20px;
-    }
-
-    .stat-item {
-      background: rgba(108, 92, 231, 0.1);
-      border-radius: 12px;
-      padding: 12px 6px;
-    }
-
-    .stat-value { font-size: 20px; font-weight: 700; color: var(--accent2); }
-    .stat-label { font-size: 10px; color: var(--text2); margin-top: 4px; }
-
-    .invite-btn {
-      width: 100%;
-      padding: 16px;
-      border: none;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      color: white;
-      font-size: 16px;
-      font-weight: 600;
-      border-radius: 14px;
-      cursor: pointer;
-      margin-top: 16px;
-      transition: transform 0.15s;
-    }
-
-    .invite-btn:active { transform: scale(0.97); }
-
-    .invite-reward {
-      font-size: 12px;
-      color: var(--text2);
-      margin-top: 8px;
-      text-align: center;
-    }
-
-    .scoring-info {
-      background: var(--card);
-      border-radius: var(--radius);
-      padding: 16px 20px;
-      margin-top: 16px;
-    }
-
-    .scoring-info h3 {
-      font-size: 14px;
-      margin-bottom: 10px;
-      color: var(--text2);
-    }
-
-    .scoring-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 0;
-      font-size: 13px;
-    }
-
-    .scoring-row .pts { font-weight: 700; color: var(--green); }
-
-    /* --- Empty State --- */
-    .empty-state {
-      text-align: center;
-      padding: 60px 20px;
-      color: var(--text2);
-    }
-
-    .empty-state .emoji { font-size: 48px; margin-bottom: 12px; }
-    .empty-state p { font-size: 15px; line-height: 1.5; }
-
-    /* --- Loading --- */
-    .loader {
-      display: flex;
-      justify-content: center;
-      padding: 60px;
-    }
-
-    .loader-dot {
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      background: var(--accent);
-      margin: 0 4px;
-      animation: bounce 1.2s infinite;
-    }
-
-    .loader-dot:nth-child(2) { animation-delay: 0.2s; }
-    .loader-dot:nth-child(3) { animation-delay: 0.4s; }
-
-    @keyframes bounce {
-      0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
-      40% { transform: scale(1); opacity: 1; }
-    }
-
-    .section { display: none; }
-    .section.active { display: block; }
-
-    /* --- Rooms --- */
-    .room-card {
-      background: var(--card);
-      border-radius: var(--radius);
-      padding: 16px 18px;
-      margin-bottom: 10px;
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    .room-card:active { background: var(--card-hover); }
-
-    .room-emoji { font-size: 28px; }
-
-    .room-info { flex: 1; }
-    .room-name { font-size: 16px; font-weight: 600; }
-    .room-meta { font-size: 12px; color: var(--text2); margin-top: 2px; }
-
-    .room-arrow { color: var(--text2); font-size: 18px; }
-
-    .rooms-actions {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 16px;
-    }
-
-    .rooms-actions button {
-      flex: 1;
-      padding: 12px;
-      border: none;
-      border-radius: 12px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-
-    .btn-create {
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      color: white;
-    }
-
-    .btn-join {
-      background: var(--card);
-      color: var(--text);
-      border: 1.5px solid rgba(108, 92, 231, 0.3) !important;
-    }
-
-    .room-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 16px;
-    }
-
-    .room-back {
-      width: 36px; height: 36px;
-      border-radius: 10px;
-      background: var(--card);
-      border: none;
-      color: var(--text);
-      font-size: 18px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .room-title { flex: 1; }
-    .room-title-name { font-size: 18px; font-weight: 700; }
-    .room-title-members { font-size: 12px; color: var(--text2); }
-
-    .room-share-btn {
-      padding: 8px 14px;
-      border: 1.5px solid rgba(108, 92, 231, 0.3);
-      background: transparent;
-      color: var(--accent2);
-      font-size: 12px;
-      font-weight: 600;
-      border-radius: 10px;
-      cursor: pointer;
-    }
-
-    .room-tabs {
-      display: flex;
-      gap: 4px;
-      background: var(--card);
-      border-radius: 10px;
-      padding: 3px;
-      margin-bottom: 14px;
-    }
-
-    .room-tab {
-      flex: 1;
-      padding: 8px;
-      border: none;
-      background: transparent;
-      color: var(--text2);
-      font-size: 12px;
-      font-weight: 600;
-      border-radius: 8px;
-      cursor: pointer;
-    }
-
-    .room-tab.active { background: var(--accent); color: white; }
-
-    .add-q-btn {
-      width: 100%;
-      padding: 14px;
-      border: 2px dashed rgba(108, 92, 231, 0.3);
-      background: transparent;
-      color: var(--accent2);
-      font-size: 14px;
-      font-weight: 600;
-      border-radius: 14px;
-      cursor: pointer;
-      margin-bottom: 14px;
-    }
-
-    .resolve-btns {
-      display: flex;
-      gap: 8px;
-      margin-top: 10px;
-    }
-
-    .resolve-btn {
-      flex: 1;
-      padding: 8px;
-      border: 1.5px solid rgba(0, 206, 201, 0.3);
-      background: rgba(0, 206, 201, 0.08);
-      color: var(--green);
-      font-size: 12px;
-      font-weight: 600;
-      border-radius: 8px;
-      cursor: pointer;
-    }
-
-    .form-input {
-      width: 100%;
-      padding: 12px 14px;
-      background: var(--bg);
-      border: 1.5px solid rgba(108, 92, 231, 0.3);
-      border-radius: 10px;
-      color: var(--text);
-      font-size: 14px;
-      margin-bottom: 10px;
-      outline: none;
-    }
-
-    .form-input:focus { border-color: var(--accent); }
-    .form-input::placeholder { color: var(--text2); }
-
-    /* --- Streak Banner --- */
-    .streak-banner {
-      background: var(--card);
-      border-radius: var(--radius);
-      padding: 14px 18px;
-      margin-bottom: 14px;
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    .streak-banner:active { background: var(--card-hover); }
-
-    .streak-banner.lost {
-      border: 1.5px solid var(--red);
-      background: rgba(255, 107, 107, 0.08);
-    }
-
-    .streak-fire {
-      font-size: 32px;
-      line-height: 1;
-    }
-
-    .streak-info { flex: 1; }
-
-    .streak-count {
-      font-size: 18px;
-      font-weight: 700;
-    }
-
-    .streak-label {
-      font-size: 12px;
-      color: var(--text2);
-      margin-top: 2px;
-    }
-
-    .streak-next {
-      text-align: right;
-    }
-
-    .streak-next-label {
-      font-size: 10px;
-      color: var(--text2);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .streak-next-value {
-      font-size: 14px;
-      font-weight: 700;
-      color: var(--orange);
-    }
-
-    .streak-restore-btn {
-      padding: 8px 14px;
-      border: 1.5px solid var(--red);
-      background: rgba(255, 107, 107, 0.15);
-      color: var(--red);
-      font-size: 12px;
-      font-weight: 600;
-      border-radius: 10px;
-      cursor: pointer;
-    }
-
-    /* --- Streak Progress --- */
-    .streak-progress {
-      display: flex;
-      gap: 4px;
-      margin-top: 8px;
-    }
-
-    .streak-dot {
-      flex: 1;
-      height: 4px;
-      border-radius: 2px;
-      background: rgba(108, 92, 231, 0.2);
-    }
-
-    .streak-dot.filled {
-      background: var(--orange);
-    }
-
-    /* --- Modal --- */
-    .modal-overlay {
-      display: none;
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      background: rgba(0,0,0,0.7);
-      z-index: 100;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-
-    .modal-overlay.show { display: flex; }
-
-    .modal {
-      background: var(--card);
-      border-radius: 20px;
-      padding: 28px 24px;
-      max-width: 360px;
-      width: 100%;
-      text-align: center;
-      animation: popIn 0.3s ease;
-    }
-
-    .modal-emoji { font-size: 48px; margin-bottom: 12px; }
-    .modal-title { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
-    .modal-desc { font-size: 14px; color: var(--text2); line-height: 1.5; margin-bottom: 20px; }
-
-    .modal-btn {
-      width: 100%;
-      padding: 14px;
-      border: none;
-      border-radius: 12px;
-      font-size: 15px;
-      font-weight: 600;
-      cursor: pointer;
-      margin-bottom: 8px;
-    }
-
-    .modal-btn.primary {
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      color: white;
-    }
-
-    .modal-btn.danger {
-      background: rgba(255, 107, 107, 0.15);
-      color: var(--red);
-      border: 1.5px solid rgba(255, 107, 107, 0.3);
-    }
-
-    .modal-btn.ghost {
-      background: transparent;
-      color: var(--text2);
-    }
-
-    .milestones-list {
-      text-align: left;
-      margin: 16px 0;
-    }
-
-    .milestone-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px 0;
-      border-bottom: 1px solid rgba(108, 92, 231, 0.1);
-      font-size: 14px;
-    }
-
-    .milestone-row.achieved { color: var(--green); }
-    .milestone-row .m-reward { font-weight: 700; color: var(--orange); }
-    .milestone-row.achieved .m-reward { color: var(--green); }
-
-    /* --- Featured Question (Question of the Day) --- */
-    .question-card.featured {
-      border: 1.5px solid var(--orange);
-      background: linear-gradient(135deg, rgba(253, 203, 110, 0.08), var(--card));
-      position: relative;
-    }
-
-    .featured-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--orange);
-      background: rgba(253, 203, 110, 0.15);
-      padding: 4px 10px;
-      border-radius: 6px;
-      animation: glow 2s ease-in-out infinite alternate;
-    }
-
-    @keyframes glow {
-      from { box-shadow: 0 0 4px rgba(253, 203, 110, 0.2); }
-      to { box-shadow: 0 0 12px rgba(253, 203, 110, 0.5); }
-    }
-
-    /* --- Timer --- */
-    .timer-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text2);
-      background: rgba(178, 178, 204, 0.1);
-      padding: 4px 10px;
-      border-radius: 6px;
-    }
-
-    .timer-badge.urgent { color: var(--red); background: rgba(255, 107, 107, 0.12); }
-
-    /* --- Majority / Minority --- */
-    .majority-badge {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      padding: 8px 12px;
-      border-radius: 10px;
-      font-size: 13px;
-      font-weight: 600;
-      margin-top: 8px;
-    }
-
-    .majority-badge.majority {
-      color: var(--accent2);
-      background: rgba(108, 92, 231, 0.12);
-    }
-
-    .majority-badge.minority {
-      color: var(--orange);
-      background: rgba(253, 203, 110, 0.12);
-    }
-
-    /* --- Confetti --- */
-    .confetti-container {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      pointer-events: none;
-      z-index: 200;
-      overflow: hidden;
-    }
-
-    .confetti-piece {
-      position: absolute;
-      width: 10px;
-      height: 10px;
-      top: -10px;
-      animation: confettiFall 2.5s ease-out forwards;
-    }
-
-    @keyframes confettiFall {
-      0% { transform: translateY(0) rotateZ(0deg); opacity: 1; }
-      100% { transform: translateY(100vh) rotateZ(720deg); opacity: 0; }
-    }
-
-    .result-flash {
-      animation: flashGreen 0.6s ease;
-    }
-
-    .result-flash-wrong {
-      animation: flashRed 0.6s ease;
-    }
-
-    @keyframes flashGreen {
-      0% { box-shadow: 0 0 0 rgba(0, 206, 201, 0); }
-      50% { box-shadow: 0 0 30px rgba(0, 206, 201, 0.4); }
-      100% { box-shadow: 0 0 0 rgba(0, 206, 201, 0); }
-    }
-
-    @keyframes flashRed {
-      0% { box-shadow: 0 0 0 rgba(255, 107, 107, 0); }
-      50% { box-shadow: 0 0 30px rgba(255, 107, 107, 0.4); }
-      100% { box-shadow: 0 0 0 rgba(255, 107, 107, 0); }
-    }
-
-    /* --- Achievements --- */
-    .achievements-section {
-      background: var(--card);
-      border-radius: var(--radius);
-      padding: 16px 20px;
-      margin-top: 16px;
-    }
-
-    .achievements-section h3 {
-      font-size: 14px;
-      margin-bottom: 12px;
-      color: var(--text2);
-    }
-
-    .achievements-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-    }
-
-    .achievement-item {
-      text-align: center;
-      padding: 12px 6px;
-      border-radius: 12px;
-      background: rgba(108, 92, 231, 0.08);
-      transition: all 0.2s;
-    }
-
-    .achievement-item.locked {
-      opacity: 0.35;
-      filter: grayscale(1);
-    }
-
-    .achievement-emoji { font-size: 24px; }
-    .achievement-title { font-size: 11px; font-weight: 600; margin-top: 4px; }
-    .achievement-desc { font-size: 9px; color: var(--text2); margin-top: 2px; }
-
-    .achievement-popup {
-      position: fixed;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: var(--card);
-      border: 1.5px solid var(--orange);
-      border-radius: 16px;
-      padding: 12px 20px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      z-index: 300;
-      animation: slideDown 0.4s ease, fadeOutUp 0.4s ease 2.5s forwards;
-      box-shadow: 0 8px 30px rgba(0,0,0,0.4);
-    }
-
-    @keyframes slideDown {
-      from { transform: translateX(-50%) translateY(-100%); opacity: 0; }
-      to { transform: translateX(-50%) translateY(0); opacity: 1; }
-    }
-
-    @keyframes fadeOutUp {
-      to { transform: translateX(-50%) translateY(-100%); opacity: 0; }
-    }
-
-    /* --- Weekly Stats --- */
-    .weekly-card {
-      background: var(--card);
-      border-radius: var(--radius);
-      padding: 16px 20px;
-      margin-top: 16px;
-    }
-
-    .weekly-card h3 {
-      font-size: 14px;
-      margin-bottom: 12px;
-      color: var(--text2);
-    }
-
-    .weekly-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-    }
-
-    .weekly-stat {
-      text-align: center;
-      padding: 10px 6px;
-      background: rgba(108, 92, 231, 0.08);
-      border-radius: 10px;
-    }
-
-    .weekly-stat .ws-val { font-size: 20px; font-weight: 700; color: var(--green); }
-    .weekly-stat .ws-lbl { font-size: 10px; color: var(--text2); margin-top: 2px; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Предскажи</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0f0f14;--bg2:#1a1a24;--bg3:#24243a;--card:#1e1e2e;
+  --text:#e8e8f0;--text2:#8888aa;--accent:#6c5ce7;--accent2:#a29bfe;
+  --green:#00b894;--red:#ff6b6b;--gold:#ffd700;--blue:#0984e3;
+}
+html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);overflow-x:hidden}
+a{color:var(--accent2);text-decoration:none}
+
+.app{display:flex;flex-direction:column;min-height:100vh}
+.content{flex:1;padding:16px;padding-bottom:80px;overflow-y:auto}
+
+/* Bottom nav */
+.nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--bg2);border-top:1px solid var(--bg3);z-index:100;padding-bottom:env(safe-area-inset-bottom)}
+.nav-btn{flex:1;text-align:center;padding:10px 4px;font-size:11px;color:var(--text2);cursor:pointer;transition:.2s}
+.nav-btn.active{color:var(--accent2)}
+.nav-btn .icon{font-size:22px;display:block;margin-bottom:2px}
+
+/* Cards */
+.card{background:var(--card);border-radius:16px;padding:20px;margin-bottom:12px}
+.card-sm{background:var(--bg2);border-radius:12px;padding:14px;margin-bottom:8px}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:14px 24px;border-radius:14px;font-size:16px;font-weight:600;border:none;cursor:pointer;width:100%;transition:.15s}
+.btn-accent{background:var(--accent);color:#fff}
+.btn-accent:active{background:var(--accent2)}
+.btn-green{background:var(--green);color:#fff}
+.btn-green:active{opacity:.8}
+.btn-red{background:var(--red);color:#fff}
+.btn-red:active{opacity:.8}
+.btn-outline{background:transparent;border:2px solid var(--accent);color:var(--accent2)}
+.btn-sm{padding:10px 16px;font-size:14px;border-radius:10px;width:auto}
+.btn:disabled{opacity:.4;pointer-events:none}
+
+/* Play screen */
+.play-header{text-align:center;margin-bottom:20px}
+.play-header h2{font-size:22px;margin-bottom:4px}
+.play-header .sub{color:var(--text2);font-size:14px}
+
+.question-counter{display:flex;gap:6px;justify-content:center;margin-bottom:16px}
+.q-dot{width:10px;height:10px;border-radius:50%;background:var(--bg3)}
+.q-dot.done{background:var(--green)}
+.q-dot.wrong{background:var(--red)}
+.q-dot.current{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+
+.asset-card{text-align:center;padding:24px 16px}
+.asset-emoji{font-size:48px;margin-bottom:8px}
+.asset-name{font-size:20px;font-weight:600}
+.asset-symbol{font-size:14px;color:var(--text2)}
+.asset-price{font-size:32px;font-weight:700;margin:16px 0 8px;font-variant-numeric:tabular-nums}
+
+.chart-container{height:120px;margin:12px 0 20px;border-radius:10px;overflow:hidden;background:var(--bg)}
+.chart-container canvas{width:100%;height:100%}
+
+.predict-btns{display:flex;gap:12px;margin-top:16px}
+.predict-btns .btn{flex:1;font-size:18px;padding:18px}
+
+/* Timer */
+.timer-block{text-align:center;padding:40px 20px}
+.timer-block .icon-big{font-size:64px;margin-bottom:16px}
+.timer-text{font-size:36px;font-weight:700;font-variant-numeric:tabular-nums;margin:16px 0}
+.timer-label{color:var(--text2);font-size:14px}
+
+/* Results */
+.results-header{text-align:center;margin-bottom:20px}
+.results-score{font-size:56px;font-weight:800;margin:12px 0}
+.results-score.perfect{color:var(--gold);text-shadow:0 0 20px rgba(255,215,0,.4)}
+
+.result-row{display:flex;align-items:center;gap:12px;padding:14px;border-radius:12px;margin-bottom:8px}
+.result-row.correct{background:rgba(0,184,148,.1);border:1px solid rgba(0,184,148,.2)}
+.result-row.wrong{background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.2)}
+.result-row .r-emoji{font-size:24px;flex-shrink:0}
+.result-row .r-info{flex:1}
+.result-row .r-label{font-size:14px;font-weight:600}
+.result-row .r-detail{font-size:12px;color:var(--text2)}
+.result-row .r-verdict{font-size:20px;flex-shrink:0}
+
+/* Cooldown */
+.cooldown-card{text-align:center;padding:32px}
+.cooldown-card .remaining{font-size:28px;font-weight:700;color:var(--accent2);margin:12px 0}
+
+/* Duels */
+.duel-card{display:flex;align-items:center;gap:12px;padding:14px;background:var(--bg2);border-radius:12px;margin-bottom:8px;cursor:pointer}
+.duel-card .d-vs{font-size:14px;color:var(--text2);flex:1}
+.duel-card .d-result{font-size:14px;font-weight:600}
+
+.invite-code-block{text-align:center;margin:16px 0;padding:24px;background:var(--bg);border-radius:14px;border:2px dashed var(--accent)}
+.invite-code{font-size:28px;font-weight:800;letter-spacing:4px;color:var(--accent2);margin:8px 0}
+
+/* Raffle */
+.raffle-prize{text-align:center;padding:32px 16px}
+.raffle-prize .stars{font-size:56px;font-weight:800;color:var(--gold)}
+.raffle-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0}
+.raffle-stat{text-align:center;padding:16px;background:var(--bg);border-radius:12px}
+.raffle-stat .val{font-size:22px;font-weight:700}
+.raffle-stat .lbl{font-size:12px;color:var(--text2);margin-top:4px}
+
+/* Profile */
+.profile-header{text-align:center;padding:20px 0}
+.avatar{width:72px;height:72px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700;margin:0 auto 12px;color:#fff}
+.profile-name{font-size:20px;font-weight:600}
+.premium-badge{display:inline-block;background:linear-gradient(135deg,var(--gold),#f0c040);color:#000;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;margin-top:6px}
+
+.stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0}
+.stat-item{text-align:center;padding:14px 8px;background:var(--bg2);border-radius:12px}
+.stat-item .val{font-size:20px;font-weight:700}
+.stat-item .lbl{font-size:11px;color:var(--text2);margin-top:4px}
+
+.achievements-title{font-size:16px;font-weight:600;margin:20px 0 10px}
+.ach-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.ach-item{text-align:center;padding:12px 4px;background:var(--bg2);border-radius:12px;opacity:.35}
+.ach-item.unlocked{opacity:1}
+.ach-item .ach-icon{font-size:24px}
+.ach-item .ach-name{font-size:10px;color:var(--text2);margin-top:4px;line-height:1.2}
+
+/* Confetti */
+.confetti-overlay{position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:200;overflow:hidden}
+.confetti-piece{position:absolute;width:10px;height:10px;animation:confetti-fall 3s ease-out forwards}
+@keyframes confetti-fall{
+  0%{transform:translateY(-20px) rotate(0);opacity:1}
+  100%{transform:translateY(100vh) rotate(720deg);opacity:0}
+}
+
+/* Premium popup */
+.popup-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:300;display:none;align-items:center;justify-content:center;padding:20px}
+.popup-overlay.show{display:flex}
+.popup{background:var(--card);border-radius:20px;padding:28px;max-width:340px;width:100%;text-align:center}
+.popup h3{font-size:20px;margin-bottom:12px}
+.popup p{color:var(--text2);font-size:14px;margin-bottom:16px;line-height:1.5}
+.popup .btn{margin-top:8px}
+
+/* Loading */
+.loading{text-align:center;padding:40px;color:var(--text2)}
+.spinner{display:inline-block;width:24px;height:24px;border:3px solid var(--bg3);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Toast */
+.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%) translateY(-100px);background:var(--card);border:1px solid var(--bg3);padding:12px 20px;border-radius:12px;font-size:14px;z-index:400;transition:.3s;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.toast.show{transform:translateX(-50%) translateY(0)}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:4px}
+</style>
 </head>
 <body>
-  <div class="app">
-    <div class="header">
-      <div class="header-left">
-        <h1>Предскажи</h1>
-        <span>Проверь свою интуицию</span>
-      </div>
-      <div class="score-badge">
-        <span class="icon">&#9889;</span>
-        <span id="headerScore">0</span>
-      </div>
-    </div>
-
-    <div class="nav">
-      <button class="nav-btn active" data-tab="play">Вопросы</button>
-      <button class="nav-btn" data-tab="rooms">Комнаты</button>
-      <button class="nav-btn" data-tab="leaderboard">Топ</button>
-      <button class="nav-btn" data-tab="profile">Профиль</button>
-    </div>
-
-    <!-- STREAK BANNER -->
-    <div id="streakBanner" class="streak-banner" style="display:none" onclick="showStreakModal()">
-      <div class="streak-fire" id="streakEmoji">&#128293;</div>
-      <div class="streak-info">
-        <div class="streak-count"><span id="streakCount">0</span> дней подряд</div>
-        <div class="streak-label" id="streakLabel">Заходи каждый день!</div>
-        <div class="streak-progress" id="streakProgress"></div>
-      </div>
-      <div class="streak-next" id="streakNext">
-        <div class="streak-next-label">Награда</div>
-        <div class="streak-next-value" id="streakNextReward">+30</div>
-      </div>
-    </div>
-
-    <!-- STREAK LOST BANNER -->
-    <div id="streakLostBanner" class="streak-banner lost" style="display:none">
-      <div class="streak-fire">&#10060;</div>
-      <div class="streak-info">
-        <div class="streak-count">Серия потеряна!</div>
-        <div class="streak-label" id="streakLostLabel">Была серия X дней</div>
-      </div>
-      <button class="streak-restore-btn" onclick="restoreStreak()">Восстановить</button>
-    </div>
-
-    <!-- MODAL -->
-    <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
-      <div class="modal" id="modalContent"></div>
-    </div>
-
-    <!-- PLAY -->
-    <div id="play" class="section active">
-      <div class="timeframe-filter">
-        <button class="tf-btn active" data-tf="all">Все</button>
-        <button class="tf-btn" data-tf="tomorrow">Завтра</button>
-        <button class="tf-btn" data-tf="week">Неделя</button>
-        <button class="tf-btn" data-tf="month">Месяц</button>
-      </div>
-      <div id="questionsContainer">
-        <div class="loader">
-          <div class="loader-dot"></div>
-          <div class="loader-dot"></div>
-          <div class="loader-dot"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ROOMS -->
-    <div id="rooms" class="section">
-      <div id="roomsList">
-        <div class="loader"><div class="loader-dot"></div><div class="loader-dot"></div><div class="loader-dot"></div></div>
-      </div>
-    </div>
-
-    <!-- ROOM DETAIL (replaces rooms list) -->
-    <div id="roomDetail" class="section">
-      <div id="roomDetailContent"></div>
-    </div>
-
-    <!-- LEADERBOARD -->
-    <div id="leaderboard" class="section">
-      <div id="leaderboardContainer">
-        <div class="loader"><div class="loader-dot"></div><div class="loader-dot"></div><div class="loader-dot"></div></div>
-      </div>
-    </div>
-
-    <!-- PROFILE -->
-    <div id="profile" class="section">
-      <div id="profileContainer">
-        <div class="loader"><div class="loader-dot"></div><div class="loader-dot"></div><div class="loader-dot"></div></div>
-      </div>
-    </div>
+<div class="app">
+  <div class="content" id="content">
+    <div class="loading"><div class="spinner"></div><p style="margin-top:12px">Загрузка...</p></div>
   </div>
+  <div class="nav">
+    <div class="nav-btn active" onclick="showTab('play')"><span class="icon">🎯</span>Играть</div>
+    <div class="nav-btn" onclick="showTab('duels')"><span class="icon">⚔️</span>Дуэли</div>
+    <div class="nav-btn" onclick="showTab('raffle')"><span class="icon">🎫</span>Приз</div>
+    <div class="nav-btn" onclick="showTab('profile')"><span class="icon">👤</span>Профиль</div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<div class="popup-overlay" id="premiumPopup">
+  <div class="popup">
+    <h3>⭐ Premium</h3>
+    <p>25 Stars / неделя<br>• Раунд каждый час<br>• Безлимит дуэлей<br>• Больше шансов на призы</p>
+    <button class="btn btn-accent" onclick="buyPremium()">Купить за 25⭐</button>
+    <button class="btn btn-outline" style="margin-top:8px" onclick="closePremiumPopup()">Закрыть</button>
+  </div>
+</div>
 
 <script>
 const tg = window.Telegram?.WebApp;
-if (tg) {
-  tg.ready();
-  tg.expand();
-  tg.setHeaderColor('#0f0f1a');
-  tg.setBackgroundColor('#0f0f1a');
-}
+if (tg) tg.expand();
 
-const API = '';
 let currentUser = null;
-let currentTimeframe = 'all';
-let checkinData = null;
-let botUsername = '';
-const MILESTONES = [
-  { days: 3, reward: 30, label: '3 дня' },
-  { days: 7, reward: 100, label: 'Неделя' },
-  { days: 14, reward: 250, label: '2 недели' },
-  { days: 30, reward: 500, label: 'Месяц' },
-  { days: 60, reward: 1000, label: '2 месяца' },
-  { days: 100, reward: 2000, label: '100 дней' },
-];
+let botName = '';
+let currentTab = 'play';
+let activeRound = null;
+let currentQuestionIdx = 0;
+let sparklineCache = {};
+let timerInterval = null;
 
-const categoryNames = {
-  crypto: 'Крипто', movies: 'Кино', sport: 'Спорт',
-  tech: 'Технологии', finance: 'Финансы', music: 'Музыка',
-  entertainment: 'Развлечения', general: 'Разное'
-};
+const $ = id => document.getElementById(id);
+const content = $('content');
 
-const tfNames = { tomorrow: 'Завтра', week: 'Неделя', month: 'Месяц' };
-const tfClasses = { tomorrow: 'tf-tomorrow', week: 'tf-week', month: 'tf-month' };
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
 
-// --- TABS ---
-document.querySelectorAll('.nav-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById(btn.dataset.tab).classList.add('active');
-    if (btn.dataset.tab === 'rooms') loadRooms();
-    if (btn.dataset.tab === 'leaderboard') loadLeaderboard();
-    if (btn.dataset.tab === 'profile') loadProfile();
-    haptic('light');
-  });
-});
+async function api(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (tg?.initData) headers['X-Telegram-Init-Data'] = tg.initData;
+  const res = await fetch(path, { ...opts, headers: { ...headers, ...opts.headers } });
+  return res.json();
+}
 
-// --- TIMEFRAME FILTER ---
-document.querySelectorAll('.tf-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentTimeframe = btn.dataset.tf;
-    loadQuestions();
-    haptic('light');
-  });
-});
+async function apiPost(path, body) {
+  return api(path, { method: 'POST', body: JSON.stringify(body) });
+}
 
-// --- AUTH ---
+// --- Auth ---
+
 async function auth() {
-  const params = new URLSearchParams(window.location.search);
-  const ref = params.get('ref') || '';
+  const initData = tg?.initData || '';
+  const urlParams = new URLSearchParams(window.location.search);
+  const ref = urlParams.get('ref') || urlParams.get('startapp') || '';
 
-  try {
-    const res = await fetch(`${API}/api/auth`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ initData: tg?.initData || '', referredBy: ref || undefined })
-    });
-    const data = await res.json();
-    if (data.ok) {
-      currentUser = data.user;
-      checkinData = data.checkin;
-      if (data.botUsername) botUsername = data.botUsername;
-      document.getElementById('headerScore').textContent = currentUser.score;
-      updateStreakBanner();
-      loadQuestions();
+  const data = await apiPost('/api/auth', { initData, ref, chatId: tg?.initDataUnsafe?.user?.id });
+  if (!data.ok) { content.innerHTML = '<div class="loading">Ошибка авторизации</div>'; return; }
 
-      if (checkinData && checkinData.reward > 0) {
-        setTimeout(() => showRewardModal(checkinData.reward, checkinData.daily_streak), 500);
+  currentUser = data.user;
+  botName = data.botUsername || '';
+  showTab('play');
+}
+
+// --- Tabs ---
+
+function showTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.nav-btn').forEach((b, i) => {
+    b.classList.toggle('active', ['play','duels','raffle','profile'][i] === tab);
+  });
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+
+  if (tab === 'play') loadPlay();
+  else if (tab === 'duels') loadDuels();
+  else if (tab === 'raffle') loadRaffle();
+  else if (tab === 'profile') loadProfile();
+}
+
+// --- PLAY ---
+
+async function loadPlay() {
+  content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+  const data = await api('/api/round/check');
+  if (!data.ok) { content.innerHTML = '<div class="card">Ошибка загрузки</div>'; return; }
+
+  if (data.status === 'in_progress') {
+    activeRound = data.round;
+    const questions = data.questions;
+    const firstUnanswered = questions.findIndex(q => !q.user_answer);
+    currentQuestionIdx = firstUnanswered >= 0 ? firstUnanswered : questions.length;
+    if (currentQuestionIdx >= 5) {
+      renderWaiting(data.round);
+    } else {
+      renderQuestion(data.round, questions, currentQuestionIdx);
+    }
+  } else if (data.status === 'waiting') {
+    const round = data.round;
+    const resolveAt = new Date(round.resolve_after);
+    if (resolveAt <= new Date()) {
+      const results = await api(`/api/round/${round.id}/results`);
+      if (results.round?.is_resolved) {
+        renderResults(results.round, results.questions);
+      } else {
+        renderWaiting(round);
       }
+    } else {
+      renderWaiting(round);
     }
-  } catch (e) {
-    console.error('Auth error:', e);
-    currentUser = { telegram_id: 1, score: 0, correct: 0, total: 0, first_name: 'Demo', username: 'demo', best_streak: 0, streak: 0, daily_streak: 1, best_daily_streak: 1, streak_freezes: 1, last_active_date: new Date().toISOString().slice(0, 10) };
-    updateStreakBanner();
-    loadQuestions();
+  } else {
+    if (data.canStart?.ok) {
+      renderStartScreen();
+    } else {
+      renderCooldown(data.canStart);
+    }
   }
 }
 
-// --- QUESTIONS ---
-async function loadQuestions() {
-  const container = document.getElementById('questionsContainer');
-
-  try {
-    const url = `${API}/api/questions?userId=${currentUser.telegram_id}&timeframe=${currentTimeframe}`;
-    const res = await fetch(url);
-    const data = await res.json();
-
-    if (!data.ok || !data.questions.length) {
-      container.innerHTML = `
-        <div class="empty-state">
-          <div class="emoji">&#128302;</div>
-          <p>Нет вопросов в этой категории.<br>Выбери другой срок или загляни позже!</p>
-        </div>`;
-      return;
-    }
-
-    container.innerHTML = data.questions.map(q => renderQuestion(q)).join('');
-    updateTimers();
-  } catch (e) {
-    container.innerHTML = `
-      <div class="empty-state">
-        <div class="emoji">&#128225;</div>
-        <p>Не удалось загрузить вопросы.<br>Проверь подключение.</p>
-      </div>`;
-  }
-}
-
-function renderQuestion(q) {
-  const hasC = !!q.option_c;
-  const total = q.votes_a + q.votes_b + (hasC ? (q.votes_c || 0) : 0);
-  const pctA = total > 0 ? Math.round((q.votes_a / total) * 100) : (hasC ? 33 : 50);
-  const pctB = total > 0 ? Math.round((q.votes_b / total) * 100) : (hasC ? 33 : 50);
-  const pctC = hasC ? (total > 0 ? 100 - pctA - pctB : 34) : 0;
-  const voted = !!q.user_answer;
-  const cat = categoryNames[q.category] || q.category;
-  const tfLabel = tfNames[q.timeframe] || q.timeframe;
-  const tfClass = tfClasses[q.timeframe] || '';
-
-  let resolvedBadge = '';
-  let cardClass = 'question-card';
-  if (q.is_featured) cardClass += ' featured';
-
-  const featuredBadge = q.is_featured ? '<span class="featured-badge">&#11088; Вопрос дня &middot; x2</span>' : '';
-
-  let timerHtml = '';
-  if (!q.resolved && q.expires_at) {
-    timerHtml = `<span class="timer-badge" data-expires="${q.expires_at}"></span>`;
-  }
-
-  if (voted && q.resolved) {
-    if (q.user_was_correct) {
-      resolvedBadge = `<span class="resolved-badge correct">+20 &#10003; Угадал</span>`;
-      cardClass += ' resolved-correct';
-    } else {
-      resolvedBadge = `<span class="resolved-badge wrong">&#10007; Не угадал</span>`;
-      cardClass += ' resolved-wrong';
-    }
-  } else if (voted && !q.resolved) {
-    resolvedBadge = `<span class="resolved-badge pending">&#8987; Ждём результат</span>`;
-  }
-
-  let majorityHtml = '';
-  if (voted && !q.resolved && q.user_in_majority !== null) {
-    if (q.user_in_majority) {
-      majorityHtml = '<div class="majority-badge majority">&#128101; Ты в большинстве</div>';
-    } else {
-      majorityHtml = '<div class="majority-badge minority">&#127775; Ты в меньшинстве — смелый выбор!</div>';
-    }
-  }
-
-  if (voted) {
-    const selA = q.user_answer === 'a';
-    const selB = q.user_answer === 'b';
-    const selC = q.user_answer === 'c';
-
-    let classA = 'option-btn voted';
-    let classB = 'option-btn voted';
-    let classC = 'option-btn voted';
-
-    if (selA) classA += ' selected';
-    if (selB) classB += ' selected';
-    if (selC) classC += ' selected';
-
-    if (q.resolved) {
-      if (selA && q.correct_answer === 'a') classA += ' was-correct';
-      if (selA && q.correct_answer !== 'a') classA += ' was-wrong';
-      if (selB && q.correct_answer === 'b') classB += ' was-correct';
-      if (selB && q.correct_answer !== 'b') classB += ' was-wrong';
-      if (selC && q.correct_answer === 'c') classC += ' was-correct';
-      if (selC && q.correct_answer !== 'c') classC += ' was-wrong';
-      if (q.correct_answer === 'a' && !selA) classA += ' is-correct-answer';
-      if (q.correct_answer === 'b' && !selB) classB += ' is-correct-answer';
-      if (q.correct_answer === 'c' && !selC) classC += ' is-correct-answer';
-    }
-
-    const optCHtml = hasC ? `
-          <div class="${classC}">
-            <div class="bar" style="width: ${pctC}%"></div>
-            <div class="label"><span>${q.option_c}</span><span class="percent">${pctC}%</span></div>
-          </div>` : '';
-
-    const pointsText = q.is_featured ? '+10 за ответ' : '+5 за ответ';
-    const bonusText = q.resolved && q.user_was_correct ? ' | +20 бонус' : '';
-
-    return `
-      <div class="${cardClass}">
-        <div class="question-meta">
-          <span class="question-category">${cat}</span>
-          <span class="question-timeframe ${tfClass}">${tfLabel}</span>
-          ${featuredBadge}
-          ${timerHtml}
-          ${resolvedBadge}
-        </div>
-        <div class="question-text">${q.text}</div>
-        <div class="options">
-          <div class="${classA}">
-            <div class="bar" style="width: ${pctA}%"></div>
-            <div class="label"><span>${q.option_a}</span><span class="percent">${pctA}%</span></div>
-          </div>
-          <div class="${classB}">
-            <div class="bar" style="width: ${pctB}%"></div>
-            <div class="label"><span>${q.option_b}</span><span class="percent">${pctB}%</span></div>
-          </div>
-          ${optCHtml}
-        </div>
-        ${majorityHtml}
-        <div class="card-footer">
-          <span>${total} голос${pluralize(total)}</span>
-          <span>${pointsText}${bonusText}</span>
-        </div>
-      </div>`;
-  }
-
-  const btnCHtml = hasC ? `
-        <button class="option-btn" onclick="predict(${q.id}, 'c', this)">
-          <div class="bar" style="width: 0%"></div>
-          <div class="label"><span>${q.option_c}</span></div>
-        </button>` : '';
-
-  return `
-    <div class="${cardClass}" id="q-${q.id}">
-      <div class="question-meta">
-        <span class="question-category">${cat}</span>
-        <span class="question-timeframe ${tfClass}">${tfLabel}</span>
-        ${featuredBadge}
-        ${timerHtml}
+function renderStartScreen() {
+  content.innerHTML = `
+    <div class="play-header">
+      <h2>🎯 Предскажи</h2>
+      <div class="sub">5 активов — выше или ниже через час?</div>
+    </div>
+    <div class="card" style="text-align:center;padding:40px 20px">
+      <div style="font-size:64px;margin-bottom:16px">📈</div>
+      <p style="color:var(--text2);margin-bottom:20px">Угадай направление цены 5 криптовалют.<br>Результат через 1 час.</p>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:24px">
+        <span style="background:var(--bg);padding:6px 12px;border-radius:8px;font-size:13px">₿ BTC</span>
+        <span style="background:var(--bg);padding:6px 12px;border-radius:8px;font-size:13px">Ξ ETH</span>
+        <span style="background:var(--bg);padding:6px 12px;border-radius:8px;font-size:13px">💎 TON</span>
+        <span style="background:var(--bg);padding:6px 12px;border-radius:8px;font-size:13px">🐕 DOGE</span>
+        <span style="background:var(--bg);padding:6px 12px;border-radius:8px;font-size:13px">◎ SOL</span>
       </div>
-      <div class="question-text">${q.text}</div>
-      <div class="options">
-        <button class="option-btn" onclick="predict(${q.id}, 'a', this)">
-          <div class="bar" style="width: 0%"></div>
-          <div class="label"><span>${q.option_a}</span></div>
-        </button>
-        <button class="option-btn" onclick="predict(${q.id}, 'b', this)">
-          <div class="bar" style="width: 0%"></div>
-          <div class="label"><span>${q.option_b}</span></div>
-        </button>
-        ${btnCHtml}
-      </div>
+      <button class="btn btn-accent" onclick="startRound()">Начать раунд</button>
+    </div>
+    <div class="card-sm" style="text-align:center">
+      <p style="font-size:13px;color:var(--text2)">🎫 5/5 = билет в розыгрыш 500⭐ + Premium 3 дня</p>
     </div>`;
 }
 
-async function predict(questionId, answer, btnEl) {
-  haptic('medium');
+function renderCooldown(info) {
+  const remaining = info?.remaining || 0;
+  content.innerHTML = `
+    <div class="play-header">
+      <h2>🎯 Предскажи</h2>
+    </div>
+    <div class="cooldown-card card">
+      <div style="font-size:48px;margin-bottom:12px">⏳</div>
+      <p style="color:var(--text2)">Следующий раунд доступен через</p>
+      <div class="remaining" id="cdTimer">${remaining} мин</div>
+      ${!info?.premium ? '<p style="font-size:12px;color:var(--text2);margin-top:12px">⭐ Premium: раунд каждый час</p>' : ''}
+    </div>`;
+}
 
-  const card = document.getElementById(`q-${questionId}`);
-  const buttons = card.querySelectorAll('.option-btn');
-  buttons.forEach(b => { b.disabled = true; b.classList.add('voted'); });
+async function startRound() {
+  const btn = content.querySelector('.btn-accent');
+  if (btn) { btn.disabled = true; btn.textContent = 'Загрузка...'; }
 
-  try {
-    const res = await fetch(`${API}/api/predict`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: currentUser.telegram_id, questionId, answer })
-    });
+  const data = await apiPost('/api/round/start', {});
+  if (!data.ok) { toast(data.error || 'Ошибка'); if (btn) { btn.disabled = false; btn.textContent = 'Начать раунд'; } return; }
 
-    const data = await res.json();
+  activeRound = { id: data.round_id, started_at: data.started_at, resolve_after: data.resolve_after };
+  currentQuestionIdx = 0;
 
-    if (data.ok) {
-      currentUser = data.user;
-      document.getElementById('headerScore').textContent = currentUser.score;
+  const questions = data.questions.map((q, i) => ({
+    ...q, question_index: i, round_id: data.round_id,
+    price_at_start: q.price, user_answer: null
+  }));
 
-      const q = data.question;
-      const hasC = !!q.option_c;
-      const total = q.votes_a + q.votes_b + (hasC ? (q.votes_c || 0) : 0);
-      const pctA = total > 0 ? Math.round((q.votes_a / total) * 100) : (hasC ? 33 : 50);
-      const pctB = total > 0 ? Math.round((q.votes_b / total) * 100) : (hasC ? 33 : 50);
-      const pctC = hasC ? (total > 0 ? 100 - pctA - pctB : 34) : 0;
+  renderQuestion(activeRound, questions, 0);
+}
 
-      const answerMap = ['a', 'b', 'c'];
-      const pctMap = [pctA, pctB, pctC];
-      buttons.forEach((btn, i) => {
-        const letter = answerMap[i];
-        if (!letter) return;
-        const pct = pctMap[i];
-        if (letter === answer) btn.classList.add('selected');
-        btn.querySelector('.bar').style.width = pct + '%';
-        const percentSpan = document.createElement('span');
-        percentSpan.className = 'percent';
-        percentSpan.textContent = pct + '%';
-        btn.querySelector('.label').appendChild(percentSpan);
-      });
+async function renderQuestion(round, questions, idx) {
+  const q = questions[idx];
+  if (!q) { renderWaiting(round); return; }
 
-      let majorityHtml = '';
-      if (data.user_in_majority !== null && data.user_in_majority !== undefined) {
-        if (data.user_in_majority) {
-          majorityHtml = '<div class="majority-badge majority">&#128101; Ты в большинстве</div>';
-        } else {
-          majorityHtml = '<div class="majority-badge minority">&#127775; Ты в меньшинстве — смелый выбор!</div>';
-        }
-      }
+  const dots = questions.map((qq, i) => {
+    if (i < idx) return `<div class="q-dot ${qq.is_correct !== undefined ? (qq.is_correct ? 'done' : 'wrong') : 'done'}"></div>`;
+    if (i === idx) return '<div class="q-dot current"></div>';
+    return '<div class="q-dot"></div>';
+  }).join('');
 
-      const footer = document.createElement('div');
-      footer.innerHTML = majorityHtml + `<div class="card-footer"><span>${total} голос${pluralize(total)}</span><span class="points-popup">+${data.pointsEarned} &#9889; | &#8987; ждём результат</span></div>`;
-      card.appendChild(footer);
+  const priceFormatted = formatPrice(q.price_at_start || q.price, q.asset);
 
-      if (data.newAchievements && data.newAchievements.length > 0) {
-        data.newAchievements.forEach((a, i) => {
-          setTimeout(() => showAchievementPopup(a.emoji, a.title), i * 700);
-        });
-      }
+  content.innerHTML = `
+    <div class="question-counter">${dots}</div>
+    <div class="card asset-card">
+      <div class="asset-emoji">${q.asset_emoji || q.emoji || ''}</div>
+      <div class="asset-name">${q.asset_label || q.label}</div>
+      <div class="asset-symbol">${(q.symbol || q.asset || '').toUpperCase()}/USD</div>
+      <div class="asset-price">${priceFormatted}</div>
+      <div class="chart-container"><canvas id="chart"></canvas></div>
+      <div style="color:var(--text2);font-size:13px;margin-bottom:8px">Через 1 час цена будет...</div>
+      <div class="predict-btns">
+        <button class="btn btn-green" onclick="submitAnswer(${round.id}, ${idx}, 'up', this)">📈 Выше</button>
+        <button class="btn btn-red" onclick="submitAnswer(${round.id}, ${idx}, 'down', this)">📉 Ниже</button>
+      </div>
+    </div>`;
 
-      haptic('success');
-    }
-  } catch (e) {
-    console.error('Predict error:', e);
-    buttons.forEach(b => { b.disabled = false; b.classList.remove('voted'); });
+  loadChart(q.asset || q.id);
+}
+
+async function submitAnswer(roundId, idx, answer, btnEl) {
+  document.querySelectorAll('.predict-btns .btn').forEach(b => b.disabled = true);
+
+  const data = await apiPost('/api/round/answer', { roundId, questionIndex: idx, answer });
+  if (!data.ok) { toast(data.error || 'Ошибка'); return; }
+
+  if (data.is_complete) {
+    const round = await api(`/api/round/${roundId}/results`);
+    renderWaiting(round.round || activeRound);
+  } else {
+    currentQuestionIdx = idx + 1;
+    const allQ = await api(`/api/round/${roundId}/results`);
+    setTimeout(() => renderQuestion(activeRound, allQ.questions, idx + 1), 300);
   }
 }
 
-// --- LEADERBOARD ---
-async function loadLeaderboard() {
-  const container = document.getElementById('leaderboardContainer');
+function renderWaiting(round) {
+  const resolveAt = new Date(round.resolve_after);
 
-  try {
-    const res = await fetch(`${API}/api/leaderboard`);
-    const data = await res.json();
-
-    if (!data.ok || !data.leaders.length) {
-      container.innerHTML = `<div class="empty-state"><div class="emoji">&#127942;</div><p>Пока нет участников.<br>Стань первым!</p></div>`;
+  function updateTimer() {
+    const diff = resolveAt - new Date();
+    if (diff <= 0) {
+      clearInterval(timerInterval);
+      checkResults(round.id);
       return;
     }
+    const min = Math.floor(diff / 60000);
+    const sec = Math.floor((diff % 60000) / 1000);
+    const el = document.getElementById('waitTimer');
+    if (el) el.textContent = `${min}:${String(sec).padStart(2, '0')}`;
+  }
 
-    container.innerHTML = data.leaders.map((u, i) => {
-      const topClass = i === 0 ? 'top-1' : i === 1 ? 'top-2' : i === 2 ? 'top-3' : '';
-      const medals = ['&#129351;', '&#129352;', '&#129353;'];
-      const rankDisplay = i < 3 ? medals[i] : (i + 1);
-      const name = u.first_name || u.username || 'Аноним';
-      const isMe = currentUser && u.telegram_id === currentUser.telegram_id;
-      const accuracy = u.total > 0 ? Math.round((u.correct / u.total) * 100) : 0;
+  content.innerHTML = `
+    <div class="timer-block card">
+      <div class="icon-big">⏱️</div>
+      <p style="color:var(--text2)">Ожидание результатов</p>
+      <div class="timer-text" id="waitTimer">--:--</div>
+      <div class="timer-label">Цены обновятся и раунд завершится</div>
+    </div>
+    <div class="card-sm" style="text-align:center">
+      <p style="font-size:13px;color:var(--text2)">Можешь пока сыграть дуэль с другом! ⚔️</p>
+      <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="showTab('duels')">Дуэли</button>
+    </div>`;
 
-      return `
-        <div class="leaderboard-item ${topClass}" style="${isMe ? 'border-color: var(--green);' : ''}">
-          <div class="lb-rank">${rankDisplay}</div>
-          <div class="lb-info">
-            <div class="lb-name">${name}${isMe ? ' (ты)' : ''}</div>
-            <div class="lb-stats">${u.total} ответов &middot; ${accuracy}% точность</div>
-          </div>
-          <div class="lb-score">${u.score}</div>
-        </div>`;
-    }).join('');
-  } catch (e) {
-    container.innerHTML = `<div class="empty-state"><div class="emoji">&#128225;</div><p>Не удалось загрузить.</p></div>`;
+  updateTimer();
+  timerInterval = setInterval(updateTimer, 1000);
+}
+
+async function checkResults(roundId) {
+  const data = await api(`/api/round/${roundId}/results`);
+  if (data.round?.is_resolved) {
+    renderResults(data.round, data.questions);
+  } else {
+    setTimeout(() => checkResults(roundId), 5000);
   }
 }
 
-// --- PROFILE ---
-async function loadProfile() {
-  const container = document.getElementById('profileContainer');
-  if (!currentUser) return;
+function renderResults(round, questions) {
+  const score = round.correct_count;
+  const is5of5 = score === 5;
 
-  try {
-    const res = await fetch(`${API}/api/stats/${currentUser.telegram_id}`);
-    const data = await res.json();
-    if (!data.ok) throw new Error();
+  if (is5of5) showConfetti();
 
-    const u = data.user;
-    const initial = (u.first_name || 'U')[0].toUpperCase();
-    const accuracy = u.total > 0 ? Math.round((u.correct / u.total) * 100) : 0;
-
-    container.innerHTML = `
-      <div class="profile-card">
-        <div class="profile-avatar">${initial}</div>
-        <div class="profile-name">${u.first_name || u.username || 'Пользователь'}</div>
-        <div class="profile-rank">Место в рейтинге: #${data.rank}</div>
-        <div class="stats-grid">
-          <div class="stat-item">
-            <div class="stat-value">${u.score}</div>
-            <div class="stat-label">Очки</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-value">${u.daily_streak || 0}</div>
-            <div class="stat-label">Серия дней</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-value">${accuracy}%</div>
-            <div class="stat-label">Точность</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-value">${u.streak_freezes || 0}</div>
-            <div class="stat-label">Заморозки</div>
-          </div>
+  const rows = questions.map(q => {
+    const isCorrect = q.is_correct;
+    const priceStart = formatPrice(q.price_at_start, q.asset);
+    const priceEnd = q.price_at_resolve ? formatPrice(q.price_at_resolve, q.asset) : '—';
+    const arrow = q.user_answer === 'up' ? '📈' : '📉';
+    const changePercent = q.price_at_resolve
+      ? (((q.price_at_resolve - q.price_at_start) / q.price_at_start) * 100).toFixed(2) : '—';
+    return `
+      <div class="result-row ${isCorrect ? 'correct' : 'wrong'}">
+        <div class="r-emoji">${q.asset_emoji || ''}</div>
+        <div class="r-info">
+          <div class="r-label">${q.asset_label} ${arrow}</div>
+          <div class="r-detail">${priceStart} → ${priceEnd} (${changePercent}%)</div>
         </div>
-      </div>
-
-      ${renderWeeklyStats(data.weeklyStats)}
-      ${renderAchievements(data.achievements || [])}
-
-      <button class="invite-btn" onclick="shareInvite()">Пригласить друга</button>
-      <div class="invite-reward">+50 очков за каждого друга</div>
-
-      <div class="scoring-info">
-        <h3>Как начисляются очки</h3>
-        <div class="scoring-row"><span>Любой ответ</span><span class="pts">+5</span></div>
-        <div class="scoring-row"><span>Вопрос дня</span><span class="pts">+10</span></div>
-        <div class="scoring-row"><span>Угаданный результат</span><span class="pts">+20</span></div>
-        <div class="scoring-row"><span>Приглашение друга</span><span class="pts">+50</span></div>
-        <div class="scoring-row"><span>Серия 3 / 7 / 14 / 30 дней</span><span class="pts">+30...+500</span></div>
-      </div>
-      <div class="scoring-info" style="margin-top:10px">
-        <h3>&#10052; Заморозка серии</h3>
-        <div class="scoring-row"><span>&#11088; 1 заморозка</span><span class="pts">50 Stars</span></div>
-        <div class="scoring-row"><span>&#11088; 3 заморозки</span><span class="pts">100 Stars</span></div>
-        <div class="scoring-row"><span>Или за очки</span><span class="pts">100 очков</span></div>
+        <div class="r-verdict">${isCorrect ? '✅' : '❌'}</div>
       </div>`;
-  } catch (e) {
-    container.innerHTML = `<div class="empty-state"><div class="emoji">&#128100;</div><p>Не удалось загрузить профиль.</p></div>`;
-  }
+  }).join('');
+
+  content.innerHTML = `
+    <div class="results-header">
+      <div style="font-size:48px;margin-bottom:8px">${is5of5 ? '🏆' : score >= 3 ? '👍' : '😔'}</div>
+      <div class="results-score ${is5of5 ? 'perfect' : ''}">${score}/5</div>
+      <p style="color:var(--text2)">${is5of5 ? 'Идеально! +1 билет в розыгрыш!' : score >= 3 ? 'Неплохо!' : 'Попробуй ещё!'}</p>
+    </div>
+    ${rows}
+    <button class="btn btn-accent" style="margin-top:16px" onclick="loadPlay()">Далее</button>`;
 }
 
-function shareInvite() {
-  haptic('medium');
-  const userId = currentUser?.telegram_id || '';
-  const text = 'Проверь свою интуицию в Предскажи!';
-  const botName = botUsername || 'your_bot';
-  const url = `https://t.me/share/url?url=${encodeURIComponent(`https://t.me/${botName}?start=${userId}`)}&text=${encodeURIComponent(text)}`;
+// --- Chart ---
+
+async function loadChart(assetId) {
+  const canvas = document.getElementById('chart');
+  if (!canvas) return;
+
+  let prices = sparklineCache[assetId];
+  if (!prices) {
+    const data = await api(`/api/sparkline/${assetId}`);
+    prices = data.prices || [];
+    sparklineCache[assetId] = prices;
+  }
+  if (prices.length < 2) return;
+
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+
+  const w = rect.width, h = rect.height;
+  const last100 = prices.slice(-100);
+  const min = Math.min(...last100);
+  const max = Math.max(...last100);
+  const range = max - min || 1;
+
+  const isUp = last100[last100.length - 1] >= last100[0];
+  const color = isUp ? '#00b894' : '#ff6b6b';
+
+  ctx.beginPath();
+  last100.forEach((p, i) => {
+    const x = (i / (last100.length - 1)) * w;
+    const y = h - ((p - min) / range) * (h - 8) - 4;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, color + '30');
+  grad.addColorStop(1, color + '00');
+  ctx.lineTo(w, h);
+  ctx.lineTo(0, h);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+}
+
+// --- DUELS ---
+
+async function loadDuels() {
+  content.innerHTML = `
+    <div class="play-header">
+      <h2>⚔️ Дуэли</h2>
+      <div class="sub">Вызови друга — кто точнее?</div>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:16px">
+      <button class="btn btn-accent" style="flex:1" onclick="createDuel()">Создать дуэль</button>
+      <button class="btn btn-outline" style="flex:1" onclick="showJoinDuel()">Присоединиться</button>
+    </div>
+    <div id="duelContent"><div class="loading"><div class="spinner"></div></div></div>`;
+
+  const data = await api('/api/duels/history');
+  const el = document.getElementById('duelContent');
+  if (!data.ok || !data.duels?.length) {
+    el.innerHTML = '<div class="card" style="text-align:center;color:var(--text2);padding:32px">Пока нет дуэлей. Создай первую!</div>';
+    return;
+  }
+
+  el.innerHTML = '<div style="font-size:14px;font-weight:600;margin-bottom:8px">История</div>' +
+    data.duels.map(d => {
+      let status = '⏳ Ожидание';
+      if (d.is_resolved) status = d.winner_id == currentUser.telegram_id ? '🏆 Победа' : d.is_draw ? '🤝 Ничья' : '😔 Поражение';
+      else if (!d.opponent_id) status = '📨 Ждёт соперника';
+      return `<div class="duel-card" onclick="openDuel(${d.id})">
+        <div>⚔️</div>
+        <div class="d-vs">#${d.id} · ${d.invite_code}</div>
+        <div class="d-result">${status}</div>
+      </div>`;
+    }).join('');
+}
+
+async function createDuel() {
+  const data = await apiPost('/api/duel/create', {});
+  if (!data.ok) { toast(data.error || 'Ошибка'); return; }
+
+  const link = `https://t.me/${botName || 'your_bot'}?startapp=duel_${data.invite_code}`;
+  content.innerHTML = `
+    <div class="play-header"><h2>⚔️ Дуэль создана!</h2></div>
+    <div class="invite-code-block card">
+      <p style="color:var(--text2);font-size:13px">Код приглашения</p>
+      <div class="invite-code">${data.invite_code}</div>
+      <button class="btn btn-sm btn-outline" onclick="copyText('${data.invite_code}')">Копировать код</button>
+    </div>
+    <button class="btn btn-accent" onclick="shareDuel('${link}')">Отправить другу</button>
+    <div style="margin-top:12px;text-align:center;color:var(--text2);font-size:13px">Теперь ответь на 5 вопросов!</div>
+    <button class="btn btn-outline" style="margin-top:12px" onclick="playDuel(${data.duel_id}, ${JSON.stringify(data.questions).replace(/"/g, '&quot;')})">Играть</button>`;
+}
+
+function shareDuel(link) {
+  const text = '⚔️ Вызываю тебя на дуэль! Кто точнее предскажет цены?';
+  const url = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
   window.open(url, '_blank');
 }
 
-// --- UTILS ---
-function pluralize(n) {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return '';
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'а';
-  return 'ов';
+function showJoinDuel() {
+  content.innerHTML = `
+    <div class="play-header"><h2>Присоединиться</h2></div>
+    <div class="card">
+      <p style="color:var(--text2);font-size:13px;margin-bottom:12px">Введи код дуэли</p>
+      <input type="text" id="duelCode" maxlength="8" placeholder="Код..." style="width:100%;padding:14px;border-radius:12px;border:1px solid var(--bg3);background:var(--bg);color:var(--text);font-size:18px;text-align:center;letter-spacing:4px">
+      <button class="btn btn-accent" style="margin-top:12px" onclick="joinDuel()">Присоединиться</button>
+    </div>`;
 }
 
-function haptic(type) {
-  if (tg?.HapticFeedback) {
-    if (type === 'success') tg.HapticFeedback.notificationOccurred('success');
-    else if (type === 'medium') tg.HapticFeedback.impactOccurred('medium');
-    else tg.HapticFeedback.impactOccurred('light');
-  }
+async function joinDuel() {
+  const code = document.getElementById('duelCode')?.value?.trim();
+  if (!code) return toast('Введи код');
+
+  const data = await apiPost('/api/duel/join', { code });
+  if (!data.ok) { toast(data.error || 'Ошибка'); return; }
+
+  playDuel(data.duel_id, data.questions);
 }
 
-// --- STREAK ---
-
-function updateStreakBanner() {
-  if (!currentUser) return;
-
-  const streak = currentUser.daily_streak || 0;
-  const freezes = currentUser.streak_freezes || 0;
-  const lastActive = currentUser.last_active_date;
-  const today = new Date().toISOString().slice(0, 10);
-
-  const banner = document.getElementById('streakBanner');
-  const lostBanner = document.getElementById('streakLostBanner');
-
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().slice(0, 10);
-
-  const isStreakBroken = lastActive && lastActive !== today && lastActive !== yesterdayStr && streak > 0;
-
-  if (isStreakBroken && freezes > 0) {
-    banner.style.display = 'none';
-    lostBanner.style.display = 'flex';
-    document.getElementById('streakLostLabel').textContent = `Была серия ${streak} дней. Заморозок: ${freezes}`;
+async function playDuel(duelId, questions, idx = 0) {
+  if (idx >= questions.length) {
+    content.innerHTML = `
+      <div class="timer-block card">
+        <div class="icon-big">⚔️</div>
+        <p>Ответы отправлены! Ждём соперника и результаты.</p>
+        <button class="btn btn-outline" style="margin-top:16px" onclick="showTab('duels')">К дуэлям</button>
+      </div>`;
     return;
   }
 
-  lostBanner.style.display = 'none';
-  banner.style.display = 'flex';
+  const q = questions[idx];
+  const dots = questions.map((_, i) => `<div class="q-dot ${i < idx ? 'done' : i === idx ? 'current' : ''}"></div>`).join('');
+  const priceFormatted = formatPrice(q.price_at_start || q.price, q.asset);
 
-  document.getElementById('streakCount').textContent = streak;
-  document.getElementById('streakEmoji').innerHTML = streak >= 30 ? '&#127775;' : streak >= 7 ? '&#128293;' : '&#9889;';
+  content.innerHTML = `
+    <div style="text-align:center;color:var(--accent2);font-size:13px;margin-bottom:8px">⚔️ Дуэль</div>
+    <div class="question-counter">${dots}</div>
+    <div class="card asset-card">
+      <div class="asset-emoji">${q.asset_emoji || q.emoji || ''}</div>
+      <div class="asset-name">${q.asset_label || q.label}</div>
+      <div class="asset-price">${priceFormatted}</div>
+      <div class="chart-container"><canvas id="chart"></canvas></div>
+      <div class="predict-btns">
+        <button class="btn btn-green" onclick="submitDuelAnswer(${duelId}, ${idx}, 'up', ${JSON.stringify(questions).replace(/"/g, '&quot;')})">📈 Выше</button>
+        <button class="btn btn-red" onclick="submitDuelAnswer(${duelId}, ${idx}, 'down', ${JSON.stringify(questions).replace(/"/g, '&quot;')})">📉 Ниже</button>
+      </div>
+    </div>`;
 
-  const nextMilestone = MILESTONES.find(m => m.days > streak);
-  if (nextMilestone) {
-    document.getElementById('streakNextReward').textContent = `+${nextMilestone.reward}`;
-    document.getElementById('streakLabel').textContent = `До награды: ${nextMilestone.days - streak} дн.`;
+  loadChart(q.asset || q.id);
+}
+
+async function submitDuelAnswer(duelId, idx, answer, questions) {
+  document.querySelectorAll('.predict-btns .btn').forEach(b => b.disabled = true);
+  const data = await apiPost('/api/duel/answer', { duelId, questionIndex: idx, answer });
+  if (!data.ok) { toast(data.error || 'Ошибка'); return; }
+  setTimeout(() => playDuel(duelId, questions, idx + 1), 300);
+}
+
+async function openDuel(duelId) {
+  const data = await api(`/api/duel/${duelId}`);
+  if (!data.ok) { toast('Ошибка'); return; }
+  const d = data.duel;
+  const qs = data.questions;
+
+  if (d.is_resolved) {
+    const rows = qs.map(q => {
+      const isCreator = currentUser.telegram_id == d.creator_id;
+      const myCorrect = isCreator ? q.creator_correct : q.opponent_correct;
+      return `<div class="result-row ${myCorrect ? 'correct' : 'wrong'}">
+        <div class="r-emoji">${q.asset_emoji}</div>
+        <div class="r-info"><div class="r-label">${q.asset_label}</div></div>
+        <div class="r-verdict">${myCorrect ? '✅' : '❌'}</div>
+      </div>`;
+    }).join('');
+
+    let headerText;
+    if (d.is_draw) headerText = '🤝 Ничья!';
+    else if (d.winner_id == currentUser.telegram_id) headerText = '🏆 Ты победил(а)!';
+    else headerText = '😔 Поражение';
+
+    content.innerHTML = `
+      <div class="results-header">
+        <div style="font-size:48px">${d.is_draw ? '🤝' : d.winner_id == currentUser.telegram_id ? '🏆' : '😔'}</div>
+        <div class="results-score">${d.creator_correct}:${d.opponent_correct}</div>
+        <p style="color:var(--text2)">${headerText}</p>
+      </div>
+      ${rows}
+      <button class="btn btn-outline" style="margin-top:16px" onclick="showTab('duels')">Назад</button>`;
   } else {
-    document.getElementById('streakNextReward').textContent = 'MAX';
-    document.getElementById('streakLabel').textContent = 'Легенда!';
-  }
-
-  const progress = document.getElementById('streakProgress');
-  const targetDays = nextMilestone ? nextMilestone.days : 100;
-  const prevMilestone = [...MILESTONES].reverse().find(m => m.days <= streak);
-  const startDays = prevMilestone ? prevMilestone.days : 0;
-  const range = targetDays - startDays;
-  const filled = streak - startDays;
-  const dots = Math.min(range, 10);
-
-  progress.innerHTML = '';
-  for (let i = 0; i < dots; i++) {
-    const dot = document.createElement('div');
-    dot.className = 'streak-dot' + (i < Math.ceil((filled / range) * dots) ? ' filled' : '');
-    progress.appendChild(dot);
+    content.innerHTML = `
+      <div class="timer-block card">
+        <div class="icon-big">⚔️</div>
+        <p>Дуэль в процессе. Ожидание результатов...</p>
+        <button class="btn btn-outline" style="margin-top:16px" onclick="showTab('duels')">Назад</button>
+      </div>`;
   }
 }
 
-function showStreakModal() {
-  haptic('light');
-  const streak = currentUser?.daily_streak || 0;
-  const freezes = currentUser?.streak_freezes || 0;
-  const best = currentUser?.best_daily_streak || 0;
+// --- RAFFLE ---
 
-  let milestonesHtml = MILESTONES.map(m => {
-    const achieved = streak >= m.days;
-    return `<div class="milestone-row ${achieved ? 'achieved' : ''}">
-      <span>${achieved ? '&#10003;' : '&#9723;'} ${m.label}</span>
-      <span class="m-reward">+${m.reward}</span>
+async function loadRaffle() {
+  content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+  const data = await api('/api/raffle');
+  if (!data.ok) { content.innerHTML = '<div class="card">Ошибка загрузки</div>'; return; }
+
+  const profile = await api('/api/profile');
+  const myTickets = profile.tickets || 0;
+
+  const now = new Date();
+  const sunday = new Date(now);
+  sunday.setDate(sunday.getDate() + (7 - sunday.getDay()) % 7);
+  sunday.setHours(20, 0, 0, 0);
+  if (sunday <= now) sunday.setDate(sunday.getDate() + 7);
+
+  content.innerHTML = `
+    <div class="play-header">
+      <h2>🎫 Розыгрыш недели</h2>
+      <div class="sub">${data.weekKey}</div>
+    </div>
+    <div class="card raffle-prize">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:8px">Главный приз</div>
+      <div class="stars">${data.prizeStars}⭐</div>
+      <p style="color:var(--text2);font-size:13px;margin-top:8px">Случайный победитель получит Stars!</p>
+    </div>
+    <div class="raffle-stats">
+      <div class="raffle-stat"><div class="val">${myTickets}</div><div class="lbl">Твои билеты</div></div>
+      <div class="raffle-stat"><div class="val">${data.totalTickets}</div><div class="lbl">Всего билетов</div></div>
+      <div class="raffle-stat"><div class="val">${data.uniqueParticipants}</div><div class="lbl">Участников</div></div>
+      <div class="raffle-stat"><div class="val" id="raffleCountdown">—</div><div class="lbl">До розыгрыша</div></div>
+    </div>
+    <div class="card" style="text-align:center;padding:20px">
+      <p style="font-size:14px;font-weight:600;margin-bottom:8px">Как получить билеты?</p>
+      <p style="color:var(--text2);font-size:13px;line-height:1.5">
+        🎯 5/5 в раунде = 1 билет<br>
+        ⚔️ 2 победы в дуэлях = 1 билет
+      </p>
+    </div>
+    ${data.raffle?.winner_id ? `<div class="card" style="text-align:center;padding:20px;border:1px solid var(--gold)">
+      <p style="font-size:14px;font-weight:600">🏆 Победитель прошлой недели</p>
+      <p style="color:var(--gold);font-size:18px;margin-top:8px">ID: ${data.raffle.winner_id}</p>
+    </div>` : ''}`;
+
+  function updateRaffleCountdown() {
+    const diff = sunday - new Date();
+    if (diff <= 0) { document.getElementById('raffleCountdown').textContent = 'Скоро!'; return; }
+    const d = Math.floor(diff / 86400000);
+    const h = Math.floor((diff % 86400000) / 3600000);
+    document.getElementById('raffleCountdown').textContent = d > 0 ? `${d}д ${h}ч` : `${h}ч`;
+  }
+  updateRaffleCountdown();
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(updateRaffleCountdown, 60000);
+}
+
+// --- PROFILE ---
+
+async function loadProfile() {
+  content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+  const data = await api('/api/profile');
+  if (!data.ok) { content.innerHTML = '<div class="card">Ошибка загрузки</div>'; return; }
+
+  const u = data.user;
+  const premium = data.premium;
+
+  const achHtml = (data.achievementDefs || []).map(def => {
+    const unlocked = data.achievements?.some(a => a.type === def.type);
+    return `<div class="ach-item ${unlocked ? 'unlocked' : ''}">
+      <div class="ach-icon">${def.emoji}</div>
+      <div class="ach-name">${def.title}</div>
     </div>`;
   }).join('');
 
-  document.getElementById('modalContent').innerHTML = `
-    <div class="modal-emoji">${streak >= 30 ? '&#127775;' : streak >= 7 ? '&#128293;' : '&#9889;'}</div>
-    <div class="modal-title">Серия: ${streak} дней</div>
-    <div class="modal-desc">Лучшая серия: ${best} дн. &middot; Заморозок: ${freezes}</div>
-    <div class="milestones-list">${milestonesHtml}</div>
-    <div style="font-size:12px; color:var(--text2); margin-bottom:8px;">Купить заморозку:</div>
-    <button class="modal-btn primary" onclick="buyFreezeStars('freeze')">&#11088; 1 заморозка — 50 Stars</button>
-    <button class="modal-btn primary" style="background:linear-gradient(135deg,#fdcb6e,#e17055);margin-top:4px" onclick="buyFreezeStars('freeze_3')">&#11088; 3 заморозки — 100 Stars (скидка!)</button>
-    <button class="modal-btn ghost" style="font-size:12px" onclick="buyFreezePoints()">Или за 100 очков (1 шт.)</button>
-    <button class="modal-btn ghost" onclick="closeModal()">Закрыть</button>`;
+  content.innerHTML = `
+    <div class="profile-header">
+      <div class="avatar">${(u.first_name || 'U')[0].toUpperCase()}</div>
+      <div class="profile-name">${u.first_name || 'Игрок'}</div>
+      ${u.username ? `<div style="color:var(--text2);font-size:13px">@${u.username}</div>` : ''}
+      ${premium ? '<div class="premium-badge">⭐ PREMIUM</div>' : ''}
+    </div>
 
-  document.getElementById('modalOverlay').classList.add('show');
+    <div class="stats-grid">
+      <div class="stat-item"><div class="val">${u.total_rounds || 0}</div><div class="lbl">Раундов</div></div>
+      <div class="stat-item"><div class="val">${u.total_5of5 || 0}</div><div class="lbl">5/5</div></div>
+      <div class="stat-item"><div class="val">${u.best_streak || 0}</div><div class="lbl">Макс серия</div></div>
+      <div class="stat-item"><div class="val">${u.duel_wins || 0}</div><div class="lbl">Побед</div></div>
+      <div class="stat-item"><div class="val">${u.duel_losses || 0}</div><div class="lbl">Поражений</div></div>
+      <div class="stat-item"><div class="val">${data.tickets || 0}</div><div class="lbl">Билетов</div></div>
+    </div>
+
+    ${!premium ? `<button class="btn btn-accent" onclick="showPremiumPopup()">⭐ Получить Premium</button>` : ''}
+
+    <div class="achievements-title">Достижения (${data.achievements?.length || 0}/${(data.achievementDefs || []).length})</div>
+    <div class="ach-grid">${achHtml}</div>
+
+    <button class="btn btn-outline" style="margin-top:20px" onclick="shareInvite()">📨 Пригласить друга</button>
+    <button class="btn btn-outline" style="margin-top:8px" onclick="showTab('play')">🎯 Играть</button>`;
 }
 
-function showRewardModal(reward, streak) {
-  haptic('success');
-  document.getElementById('modalContent').innerHTML = `
-    <div class="modal-emoji">&#127881;</div>
-    <div class="modal-title">Награда за серию!</div>
-    <div class="modal-desc">${streak} дней подряд — ты получаешь бонус</div>
-    <div style="font-size: 36px; font-weight: 700; color: var(--orange); margin: 16px 0;">+${reward}</div>
-    <button class="modal-btn primary" onclick="closeModal()">Отлично!</button>`;
-  document.getElementById('modalOverlay').classList.add('show');
+function shareInvite() {
+  const text = '🎯 Предскажи цены криптовалют и выигрывай Stars!';
+  const name = botName || 'your_bot';
+  const link = `https://t.me/${name}?startapp=ref_${currentUser.telegram_id}`;
+  const url = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
+  window.open(url, '_blank');
 }
 
-async function restoreStreak() {
-  haptic('medium');
-  const freezes = currentUser?.streak_freezes || 0;
+function showPremiumPopup() { $('premiumPopup').classList.add('show'); }
+function closePremiumPopup() { $('premiumPopup').classList.remove('show'); }
 
-  if (freezes <= 0) {
-    document.getElementById('modalContent').innerHTML = `
-      <div class="modal-emoji">&#10060;</div>
-      <div class="modal-title">Нет заморозок!</div>
-      <div class="modal-desc">Купи заморозку, чтобы спасти серию ${currentUser?.daily_streak || 0} дней</div>
-      <button class="modal-btn primary" onclick="buyFreezeStars('freeze')">&#11088; Купить за 50 Stars</button>
-      <button class="modal-btn ghost" style="font-size:12px" onclick="buyFreezePoints()">Или за 100 очков</button>
-      <button class="modal-btn ghost" onclick="closeModal()">Не сейчас</button>`;
-    document.getElementById('modalOverlay').classList.add('show');
-    return;
-  }
-
-  try {
-    const res = await fetch(`${API}/api/streak/freeze`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: currentUser.telegram_id })
-    });
-    const data = await res.json();
-    if (data.ok) {
-      currentUser = data.user;
-      document.getElementById('headerScore').textContent = currentUser.score;
-      updateStreakBanner();
-      haptic('success');
-
-      document.getElementById('modalContent').innerHTML = `
-        <div class="modal-emoji">&#10052;</div>
-        <div class="modal-title">Серия восстановлена!</div>
-        <div class="modal-desc">Заморозка использована. Серия ${data.daily_streak} дней сохранена.<br>Осталось заморозок: ${data.streak_freezes}</div>
-        <button class="modal-btn primary" onclick="closeModal()">Отлично!</button>`;
-      document.getElementById('modalOverlay').classList.add('show');
-    } else {
-      alert(data.error || 'Не удалось восстановить');
-    }
-  } catch (e) {
-    console.error('Restore error:', e);
-  }
-}
-
-async function buyFreezeStars(item) {
-  haptic('medium');
-
-  if (!tg) {
-    alert('Оплата Stars доступна только в Telegram');
-    return;
-  }
-
-  try {
-    const res = await fetch(`${API}/api/payment/create-invoice`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: currentUser.telegram_id, item })
-    });
-    const data = await res.json();
-
-    if (!data.ok) {
-      document.getElementById('modalContent').innerHTML = `
-        <div class="modal-emoji">&#9888;</div>
-        <div class="modal-title">Бот не настроен</div>
-        <div class="modal-desc">Для оплаты Stars нужно подключить бота.<br>Пока можно купить за очки.</div>
-        <button class="modal-btn primary" onclick="buyFreezePoints()">Купить за 100 очков</button>
-        <button class="modal-btn ghost" onclick="closeModal()">Закрыть</button>`;
-      return;
-    }
-
-    tg.openInvoice(data.invoiceLink, async (status) => {
-      if (status === 'paid') {
-        haptic('success');
-
-        const verifyRes = await fetch(`${API}/api/payment/verify`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: currentUser.telegram_id, item })
-        });
-        const verifyData = await verifyRes.json();
-
-        if (verifyData.ok) {
-          currentUser.streak_freezes = verifyData.streak_freezes;
-
-          document.getElementById('modalContent').innerHTML = `
-            <div class="modal-emoji">&#10052;</div>
-            <div class="modal-title">Куплено!</div>
-            <div class="modal-desc">+${verifyData.added} заморозк${verifyData.added > 1 ? 'и' : 'а'}.<br>Всего: ${verifyData.streak_freezes}</div>
-            <button class="modal-btn primary" onclick="closeModal(); updateStreakBanner();">Отлично!</button>`;
-        }
-      } else if (status === 'cancelled') {
-        haptic('light');
-      }
-    });
-  } catch (e) {
-    console.error('Stars payment error:', e);
-  }
-}
-
-async function buyFreezePoints() {
-  haptic('medium');
-  try {
-    const res = await fetch(`${API}/api/streak/buy-freeze`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: currentUser.telegram_id })
-    });
-    const data = await res.json();
-    if (data.ok) {
-      currentUser.score = data.score;
-      currentUser.streak_freezes = data.streak_freezes;
-      document.getElementById('headerScore').textContent = data.score;
-      haptic('success');
-      showStreakModal();
-    } else {
-      document.getElementById('modalContent').innerHTML = `
-        <div class="modal-emoji">&#128176;</div>
-        <div class="modal-title">Не хватает очков</div>
-        <div class="modal-desc">Нужно 100 очков, у тебя ${currentUser.score}.<br>Отвечай на вопросы, чтобы заработать!</div>
-        <button class="modal-btn primary" onclick="closeModal()">Понятно</button>`;
-    }
-  } catch (e) {
-    console.error('Buy freeze error:', e);
-  }
-}
-
-function closeModal(e) {
-  if (e && e.target !== e.currentTarget) return;
-  document.getElementById('modalOverlay').classList.remove('show');
-}
-
-// --- ROOMS ---
-
-let currentRoomId = null;
-let currentRoomTab = 'questions';
-
-async function loadRooms() {
-  const container = document.getElementById('roomsList');
-  if (!currentUser) return;
-
-  try {
-    const res = await fetch(`${API}/api/rooms?userId=${currentUser.telegram_id}`);
-    const data = await res.json();
-
-    let html = `
-      <div class="rooms-actions">
-        <button class="btn-create" onclick="showCreateRoomModal()">+ Создать</button>
-        <button class="btn-join" onclick="showJoinRoomModal()">Войти по коду</button>
-      </div>`;
-
-    if (!data.ok || !data.rooms.length) {
-      html += `<div class="empty-state"><div class="emoji">&#127968;</div><p>У тебя пока нет комнат.<br>Создай свою или войди по коду друга!</p></div>`;
-    } else {
-      html += data.rooms.map(r => `
-        <div class="room-card" onclick="openRoom(${r.id})">
-          <div class="room-emoji">${r.emoji}</div>
-          <div class="room-info">
-            <div class="room-name">${r.name}</div>
-            <div class="room-meta">${r.members_count} участн. &middot; ${r.questions_count} вопросов</div>
-          </div>
-          <div class="room-arrow">&#8250;</div>
-        </div>`).join('');
-    }
-
-    container.innerHTML = html;
-  } catch (e) {
-    container.innerHTML = `<div class="empty-state"><div class="emoji">&#128225;</div><p>Не удалось загрузить.</p></div>`;
-  }
-}
-
-function showCreateRoomModal() {
-  haptic('light');
-  const emojis = ['&#127942;','&#9917;','&#128293;','&#127775;','&#128640;','&#127911;','&#127915;','&#129412;'];
-  const emojiPicker = emojis.map((e, i) =>
-    `<span style="font-size:24px;cursor:pointer;padding:6px" onclick="document.getElementById('roomEmoji').value=this.textContent;document.querySelectorAll('.ep').forEach(x=>x.style.opacity=0.4);this.style.opacity=1" class="ep">${e}</span>`
-  ).join('');
-
-  document.getElementById('modalContent').innerHTML = `
-    <div class="modal-title">Новая комната</div>
-    <div style="margin:12px 0">${emojiPicker}</div>
-    <input type="hidden" id="roomEmoji" value="&#127942;">
-    <input class="form-input" id="roomName" placeholder="Название комнаты" maxlength="30">
-    <button class="modal-btn primary" onclick="createRoom()">Создать</button>
-    <button class="modal-btn ghost" onclick="closeModal()">Отмена</button>`;
-  document.getElementById('modalOverlay').classList.add('show');
-}
-
-async function createRoom() {
-  const name = document.getElementById('roomName').value.trim();
-  const emoji = document.getElementById('roomEmoji').value || '🎯';
-  if (!name) return;
-  haptic('medium');
-
-  const res = await fetch(`${API}/api/rooms/create`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId: currentUser.telegram_id, name, emoji })
-  });
-  const data = await res.json();
-  if (data.ok) {
-    closeModal();
-    haptic('success');
-    openRoom(data.room.id);
+async function buyPremium() {
+  if (tg?.openInvoice) {
+    toast('Оплата через Stars — свяжитесь с ботом');
   } else {
-    alert(data.error);
+    toast('Откройте в Telegram для оплаты');
   }
+  closePremiumPopup();
 }
 
-function showJoinRoomModal() {
-  haptic('light');
-  document.getElementById('modalContent').innerHTML = `
-    <div class="modal-emoji">&#128279;</div>
-    <div class="modal-title">Войти в комнату</div>
-    <div class="modal-desc">Введи код приглашения от друга</div>
-    <input class="form-input" id="joinCode" placeholder="Код (8 символов)" maxlength="8" style="text-align:center;font-size:18px;letter-spacing:2px">
-    <button class="modal-btn primary" onclick="joinRoom()">Войти</button>
-    <button class="modal-btn ghost" onclick="closeModal()">Отмена</button>`;
-  document.getElementById('modalOverlay').classList.add('show');
+// --- Helpers ---
+
+function formatPrice(price, asset) {
+  if (!price) return '—';
+  if (price < 0.01) return '$' + price.toFixed(6);
+  if (price < 1) return '$' + price.toFixed(4);
+  if (price < 100) return '$' + price.toFixed(2);
+  return '$' + price.toLocaleString('en-US', { maximumFractionDigits: 2 });
 }
 
-async function joinRoom() {
-  const code = document.getElementById('joinCode').value.trim();
-  if (!code) return;
-  haptic('medium');
-
-  const res = await fetch(`${API}/api/rooms/join`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId: currentUser.telegram_id, inviteCode: code })
-  });
-  const data = await res.json();
-  if (data.ok) {
-    closeModal();
-    haptic('success');
-    openRoom(data.room.id);
-  } else {
-    alert(data.error || 'Комната не найдена');
-  }
+function copyText(text) {
+  navigator.clipboard?.writeText(text).then(() => toast('Скопировано!'));
 }
 
-async function openRoom(roomId) {
-  currentRoomId = roomId;
-  currentRoomTab = 'questions';
-
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.getElementById('roomDetail').classList.add('active');
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-
-  await loadRoomDetail();
-}
-
-function backToRooms() {
-  currentRoomId = null;
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.getElementById('rooms').classList.add('active');
-  document.querySelector('[data-tab="rooms"]').classList.add('active');
-  loadRooms();
-}
-
-async function loadRoomDetail() {
-  const container = document.getElementById('roomDetailContent');
-  if (!currentRoomId) return;
-
-  try {
-    const res = await fetch(`${API}/api/rooms/${currentRoomId}?userId=${currentUser.telegram_id}`);
-    const data = await res.json();
-    if (!data.ok) { backToRooms(); return; }
-
-    const r = data.room;
-    const isQTab = currentRoomTab === 'questions';
-
-    let html = `
-      <div class="room-header">
-        <button class="room-back" onclick="backToRooms()">&#8249;</button>
-        <div class="room-title">
-          <div class="room-title-name">${r.emoji} ${r.name}</div>
-          <div class="room-title-members">${r.members_count} участников</div>
-        </div>
-        <button class="room-share-btn" onclick="shareRoom('${r.invite_code}')">&#128279; Код</button>
-      </div>
-
-      <div class="room-tabs">
-        <button class="room-tab ${isQTab ? 'active' : ''}" onclick="currentRoomTab='questions';loadRoomDetail()">Вопросы</button>
-        <button class="room-tab ${!isQTab ? 'active' : ''}" onclick="currentRoomTab='leaderboard';loadRoomDetail()">Рейтинг</button>
-      </div>`;
-
-    if (isQTab) {
-      html += `<button class="add-q-btn" onclick="showAddQuestionModal()">+ Добавить вопрос</button>`;
-      if (!data.questions.length) {
-        html += `<div class="empty-state"><div class="emoji">&#128172;</div><p>Пока нет вопросов.<br>Создай первый!</p></div>`;
-      } else {
-        html += data.questions.map(q => renderRoomQuestion(q)).join('');
-      }
-    } else {
-      if (!data.leaderboard.length) {
-        html += `<div class="empty-state"><div class="emoji">&#127942;</div><p>Пока нет результатов.</p></div>`;
-      } else {
-        const medals = ['&#129351;', '&#129352;', '&#129353;'];
-        html += data.leaderboard.map((u, i) => {
-          const topClass = i === 0 ? 'top-1' : i === 1 ? 'top-2' : i === 2 ? 'top-3' : '';
-          const name = u.first_name || u.username || 'Аноним';
-          const isMe = u.user_id === currentUser.telegram_id;
-          const accuracy = u.total > 0 ? Math.round((u.correct / u.total) * 100) : 0;
-          return `
-            <div class="leaderboard-item ${topClass}" style="${isMe ? 'border-color:var(--green)' : ''}">
-              <div class="lb-rank">${i < 3 ? medals[i] : (i+1)}</div>
-              <div class="lb-info">
-                <div class="lb-name">${name}${isMe ? ' (ты)' : ''}</div>
-                <div class="lb-stats">${u.correct}/${u.total} верных &middot; ${accuracy}%</div>
-              </div>
-              <div class="lb-score">${u.score}</div>
-            </div>`;
-        }).join('');
-      }
-    }
-
-    container.innerHTML = html;
-  } catch (e) {
-    container.innerHTML = `<div class="empty-state"><div class="emoji">&#128225;</div><p>Ошибка загрузки.</p></div>`;
-  }
-}
-
-function renderRoomQuestion(q) {
-  const hasC = !!q.option_c;
-  const total = q.votes_a + q.votes_b + (hasC ? (q.votes_c || 0) : 0);
-  const pctA = total > 0 ? Math.round((q.votes_a / total) * 100) : (hasC ? 33 : 50);
-  const pctB = total > 0 ? Math.round((q.votes_b / total) * 100) : (hasC ? 33 : 50);
-  const pctC = hasC ? (total > 0 ? 100 - pctA - pctB : 34) : 0;
-  const voted = !!q.user_answer;
-
-  let badge = '';
-  let cardClass = 'question-card';
-  if (voted && q.resolved && q.user_was_correct) { badge = `<span class="resolved-badge correct">&#10003; Угадал</span>`; cardClass += ' resolved-correct'; }
-  else if (voted && q.resolved && !q.user_was_correct) { badge = `<span class="resolved-badge wrong">&#10007; Мимо</span>`; cardClass += ' resolved-wrong'; }
-  else if (voted && !q.resolved) { badge = `<span class="resolved-badge pending">&#8987; Ждём</span>`; }
-
-  let resolveHtml = '';
-  if (q.can_resolve && total > 0) {
-    const resolveCBtn = hasC ? `<button class="resolve-btn" onclick="resolveRoomQ(${q.id},'c')">&#10003; ${q.option_c}</button>` : '';
-    resolveHtml = `
-      <div class="resolve-btns">
-        <button class="resolve-btn" onclick="resolveRoomQ(${q.id},'a')">&#10003; ${q.option_a}</button>
-        <button class="resolve-btn" onclick="resolveRoomQ(${q.id},'b')">&#10003; ${q.option_b}</button>
-        ${resolveCBtn}
-      </div>`;
-  }
-
-  if (voted) {
-    let classA = 'option-btn voted' + (q.user_answer === 'a' ? ' selected' : '');
-    let classB = 'option-btn voted' + (q.user_answer === 'b' ? ' selected' : '');
-    let classC = 'option-btn voted' + (q.user_answer === 'c' ? ' selected' : '');
-    if (q.resolved) {
-      if (q.user_answer === 'a' && q.correct_answer === 'a') classA += ' was-correct';
-      if (q.user_answer === 'a' && q.correct_answer !== 'a') classA += ' was-wrong';
-      if (q.user_answer === 'b' && q.correct_answer === 'b') classB += ' was-correct';
-      if (q.user_answer === 'b' && q.correct_answer !== 'b') classB += ' was-wrong';
-      if (q.user_answer === 'c' && q.correct_answer === 'c') classC += ' was-correct';
-      if (q.user_answer === 'c' && q.correct_answer !== 'c') classC += ' was-wrong';
-      if (q.correct_answer === 'a' && q.user_answer !== 'a') classA += ' is-correct-answer';
-      if (q.correct_answer === 'b' && q.user_answer !== 'b') classB += ' is-correct-answer';
-      if (q.correct_answer === 'c' && q.user_answer !== 'c') classC += ' is-correct-answer';
-    }
-    const optCVoted = hasC ? `
-          <div class="${classC}"><div class="bar" style="width:${pctC}%"></div><div class="label"><span>${q.option_c}</span><span class="percent">${pctC}%</span></div></div>` : '';
-    return `
-      <div class="${cardClass}">
-        <div class="question-meta">
-          <span class="question-category">${q.author_name}</span>
-          ${badge}
-        </div>
-        <div class="question-text">${q.text}</div>
-        <div class="options">
-          <div class="${classA}"><div class="bar" style="width:${pctA}%"></div><div class="label"><span>${q.option_a}</span><span class="percent">${pctA}%</span></div></div>
-          <div class="${classB}"><div class="bar" style="width:${pctB}%"></div><div class="label"><span>${q.option_b}</span><span class="percent">${pctB}%</span></div></div>
-          ${optCVoted}
-        </div>
-        <div class="card-footer"><span>${total} голос${pluralize(total)}</span></div>
-        ${resolveHtml}
-      </div>`;
-  }
-
-  const btnC = hasC ? `
-        <button class="option-btn" onclick="roomPredict(${q.id},'c',this)"><div class="bar" style="width:0%"></div><div class="label"><span>${q.option_c}</span></div></button>` : '';
-  return `
-    <div class="${cardClass}" id="rq-${q.id}">
-      <div class="question-meta"><span class="question-category">${q.author_name}</span></div>
-      <div class="question-text">${q.text}</div>
-      <div class="options">
-        <button class="option-btn" onclick="roomPredict(${q.id},'a',this)"><div class="bar" style="width:0%"></div><div class="label"><span>${q.option_a}</span></div></button>
-        <button class="option-btn" onclick="roomPredict(${q.id},'b',this)"><div class="bar" style="width:0%"></div><div class="label"><span>${q.option_b}</span></div></button>
-        ${btnC}
-      </div>
-    </div>`;
-}
-
-async function roomPredict(qId, answer) {
-  haptic('medium');
-  const res = await fetch(`${API}/api/rooms/${currentRoomId}/predict`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId: currentUser.telegram_id, questionId: qId, answer })
-  });
-  const data = await res.json();
-  if (data.ok) {
-    currentUser = data.user;
-    document.getElementById('headerScore').textContent = currentUser.score;
-    haptic('success');
-    loadRoomDetail();
-  }
-}
-
-async function resolveRoomQ(qId, correct) {
-  haptic('medium');
-  const res = await fetch(`${API}/api/rooms/${currentRoomId}/resolve`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId: currentUser.telegram_id, questionId: qId, correctAnswer: correct })
-  });
-  const data = await res.json();
-  if (data.ok) {
-    haptic('success');
-    document.getElementById('modalContent').innerHTML = `
-      <div class="modal-emoji">&#127881;</div>
-      <div class="modal-title">Результат объявлен!</div>
-      <div class="modal-desc">Угадали: ${data.winners} из ${data.total}</div>
-      <button class="modal-btn primary" onclick="closeModal();loadRoomDetail()">Ок</button>`;
-    document.getElementById('modalOverlay').classList.add('show');
-  }
-}
-
-function showAddQuestionModal() {
-  haptic('light');
-  document.getElementById('modalContent').innerHTML = `
-    <div class="modal-title">Новый вопрос</div>
-    <div class="modal-desc">Задай вопрос — друзья будут отвечать, а ты выберешь правильный ответ</div>
-    <input class="form-input" id="rqText" placeholder="Вопрос" maxlength="200">
-    <input class="form-input" id="rqOptA" placeholder="Вариант A" maxlength="60">
-    <input class="form-input" id="rqOptB" placeholder="Вариант B" maxlength="60">
-    <input class="form-input" id="rqOptC" placeholder="Вариант C (необязательно)" maxlength="60">
-    <button class="modal-btn primary" onclick="addRoomQuestion()">Опубликовать</button>
-    <button class="modal-btn ghost" onclick="closeModal()">Отмена</button>`;
-  document.getElementById('modalOverlay').classList.add('show');
-}
-
-async function addRoomQuestion() {
-  const text = document.getElementById('rqText').value.trim();
-  const optA = document.getElementById('rqOptA').value.trim();
-  const optB = document.getElementById('rqOptB').value.trim();
-  const optC = document.getElementById('rqOptC').value.trim();
-  if (!text || !optA || !optB) return;
-  haptic('medium');
-
-  const body = { userId: currentUser.telegram_id, text, option_a: optA, option_b: optB };
-  if (optC) body.option_c = optC;
-
-  const res = await fetch(`${API}/api/rooms/${currentRoomId}/question`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  const data = await res.json();
-  if (data.ok) {
-    closeModal();
-    haptic('success');
-    loadRoomDetail();
-  } else {
-    alert(data.error || 'Ошибка');
-  }
-}
-
-function shareRoom(code) {
-  haptic('medium');
-  const text = `Заходи в мою комнату в Предскажи! Код: ${code}`;
-  if (tg) {
-    const url = `https://t.me/share/url?url=${encodeURIComponent(text)}`;
-    window.open(url, '_blank');
-  } else {
-    navigator.clipboard?.writeText(code);
-    alert(`Код скопирован: ${code}`);
-  }
-}
-
-// --- TIMER COUNTDOWN ---
-function updateTimers() {
-  document.querySelectorAll('.timer-badge[data-expires]').forEach(el => {
-    const expires = new Date(el.dataset.expires).getTime();
-    const now = Date.now();
-    const diff = expires - now;
-    if (diff <= 0) {
-      el.textContent = 'Время вышло';
-      el.classList.add('urgent');
-      return;
-    }
-    const hours = Math.floor(diff / 3600000);
-    const minutes = Math.floor((diff % 3600000) / 60000);
-    if (hours > 24) {
-      const days = Math.floor(hours / 24);
-      el.textContent = `\u23F3 ${days} дн. ${hours % 24} ч.`;
-    } else if (hours > 0) {
-      el.textContent = `\u23F3 ${hours} ч. ${minutes} мин.`;
-    } else {
-      el.textContent = `\u23F3 ${minutes} мин.`;
-      if (minutes < 30) el.classList.add('urgent');
-    }
-  });
-}
-setInterval(updateTimers, 10000);
-
-// --- CONFETTI ---
 function showConfetti() {
-  const container = document.createElement('div');
-  container.className = 'confetti-container';
-  document.body.appendChild(container);
-  const colors = ['#6c5ce7', '#00cec9', '#fdcb6e', '#ff6b6b', '#a29bfe', '#55efc4'];
+  const overlay = document.createElement('div');
+  overlay.className = 'confetti-overlay';
+  const colors = ['#ffd700','#ff6b6b','#00b894','#6c5ce7','#fd79a8','#0984e3'];
   for (let i = 0; i < 60; i++) {
     const piece = document.createElement('div');
     piece.className = 'confetti-piece';
     piece.style.left = Math.random() * 100 + '%';
     piece.style.background = colors[Math.floor(Math.random() * colors.length)];
-    piece.style.animationDelay = Math.random() * 0.8 + 's';
-    piece.style.animationDuration = (2 + Math.random() * 1.5) + 's';
-    piece.style.width = (6 + Math.random() * 8) + 'px';
-    piece.style.height = (6 + Math.random() * 8) + 'px';
+    piece.style.animationDelay = Math.random() * 2 + 's';
     piece.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
-    container.appendChild(piece);
+    overlay.appendChild(piece);
   }
-  setTimeout(() => container.remove(), 3500);
+  document.body.appendChild(overlay);
+  setTimeout(() => overlay.remove(), 4000);
 }
 
-// --- ACHIEVEMENT POPUP ---
-function showAchievementPopup(emoji, title) {
-  const popup = document.createElement('div');
-  popup.className = 'achievement-popup';
-  popup.innerHTML = `<span style="font-size:28px">${emoji}</span><div><div style="font-size:12px;color:var(--text2)">Новое достижение!</div><div style="font-weight:700">${title}</div></div>`;
-  document.body.appendChild(popup);
-  haptic('success');
-  setTimeout(() => popup.remove(), 3200);
-}
+// --- Handle deep links (duel invites) ---
 
-// --- RENDER ACHIEVEMENTS ---
-const ALL_ACHIEVEMENTS = [
-  { type: 'first_prediction', emoji: '\uD83C\uDFAF', title: 'Первый прогноз', desc: 'Сделай предсказание' },
-  { type: 'correct_3', emoji: '\uD83D\uDD25', title: 'Горячая серия', desc: '3 верных подряд' },
-  { type: 'correct_5', emoji: '\uD83D\uDC8E', title: 'Бриллиантовый ум', desc: '5 верных подряд' },
-  { type: 'correct_10', emoji: '\uD83E\uDDE0', title: 'Провидец', desc: '10 верных подряд' },
-  { type: 'total_10', emoji: '\uD83D\uDCDD', title: 'Активный', desc: '10 прогнозов' },
-  { type: 'total_50', emoji: '\u26A1', title: 'Опытный', desc: '50 прогнозов' },
-  { type: 'total_100', emoji: '\uD83D\uDC51', title: 'Легенда', desc: '100 прогнозов' },
-  { type: 'streak_3', emoji: '\uD83D\uDD25', title: '3 дня подряд', desc: 'Серия 3 дня' },
-  { type: 'streak_7', emoji: '\uD83C\uDF1F', title: 'Неделя', desc: 'Серия 7 дней' },
-  { type: 'streak_30', emoji: '\uD83C\uDFC6', title: 'Месяц', desc: 'Серия 30 дней' },
-  { type: 'night_owl', emoji: '\uD83E\uDD89', title: 'Ночная сова', desc: 'Прогноз ночью' },
-  { type: 'featured_correct', emoji: '\u2B50', title: 'Звёздный ответ', desc: 'Угадай вопрос дня' },
-];
-
-function renderAchievements(userAchievements) {
-  const unlockedTypes = userAchievements.map(a => a.type);
-  const items = ALL_ACHIEVEMENTS.map(a => {
-    const unlocked = unlockedTypes.includes(a.type);
-    return `<div class="achievement-item ${unlocked ? '' : 'locked'}">
-      <div class="achievement-emoji">${a.emoji}</div>
-      <div class="achievement-title">${a.title}</div>
-      <div class="achievement-desc">${a.desc}</div>
-    </div>`;
-  }).join('');
-
-  return `<div class="achievements-section">
-    <h3>\uD83C\uDFC5 Достижения (${unlockedTypes.length}/${ALL_ACHIEVEMENTS.length})</h3>
-    <div class="achievements-grid">${items}</div>
-  </div>`;
-}
-
-// --- RENDER WEEKLY STATS ---
-function renderWeeklyStats(ws) {
-  if (!ws) return '';
-  const total = parseInt(ws.total) || 0;
-  const correct = parseInt(ws.correct) || 0;
-  const points = parseInt(ws.points) || 0;
-  const accuracy = total > 0 ? Math.round(correct / total * 100) : 0;
-
-  return `<div class="weekly-card">
-    <h3>\uD83D\uDCC5 Неделя</h3>
-    <div class="weekly-grid">
-      <div class="weekly-stat"><div class="ws-val">${total}</div><div class="ws-lbl">Прогнозов</div></div>
-      <div class="weekly-stat"><div class="ws-val">${accuracy}%</div><div class="ws-lbl">Точность</div></div>
-      <div class="weekly-stat"><div class="ws-val">+${points}</div><div class="ws-lbl">Очков</div></div>
-    </div>
-  </div>`;
-}
-
-// --- INIT ---
-const hash = window.location.hash.replace('#', '');
-if (hash === 'leaderboard' || hash === 'stats' || hash === 'rooms') {
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  const tab = hash === 'stats' ? 'profile' : hash;
-  document.querySelector(`[data-tab="${tab}"]`)?.classList.add('active');
-  document.getElementById(tab)?.classList.add('active');
-}
-
-const urlRoomCode = new URLSearchParams(window.location.search).get('room');
-
-auth().then(async () => {
-  if (urlRoomCode && currentUser) {
-    try {
-      await fetch(`${API}/api/rooms/join`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: currentUser.telegram_id, inviteCode: urlRoomCode })
-      });
-      const rData = await fetch(`${API}/api/rooms?userId=${currentUser.telegram_id}`).then(r => r.json());
-      if (rData.ok) {
-        const room = rData.rooms.find(r => r.invite_code === urlRoomCode);
-        if (room) openRoom(room.id);
+function handleDeepLink() {
+  const params = new URLSearchParams(window.location.search);
+  const start = params.get('startapp') || params.get('tgWebAppStartParam') || '';
+  if (start.startsWith('duel_')) {
+    const code = start.replace('duel_', '');
+    setTimeout(async () => {
+      const data = await apiPost('/api/duel/join', { code });
+      if (data.ok) {
+        showTab('duels');
+        playDuel(data.duel_id, data.questions);
+      } else {
+        toast(data.error || 'Ошибка подключения к дуэли');
       }
-    } catch (e) { console.error('Room join error:', e); }
+    }, 1000);
   }
+}
+
+// --- Init ---
+
+auth().then(() => {
+  handleDeepLink();
 });
 </script>
 </body>

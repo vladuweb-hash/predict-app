@@ -465,14 +465,21 @@ function renderResults(round, questions) {
 async function loadChart(assetId) {
   const canvas = document.getElementById('chart');
   if (!canvas) return;
+  const container = canvas.parentElement;
 
   let prices = sparklineCache[assetId];
   if (!prices) {
-    const data = await api(`/api/sparkline/${assetId}`);
-    prices = data.prices || [];
+    try {
+      const data = await api(`/api/sparkline/${assetId}`);
+      prices = data.prices || [];
+    } catch (e) { prices = []; }
     sparklineCache[assetId] = prices;
   }
-  if (prices.length < 2) return;
+  if (prices.length < 2) {
+    container.style.display = 'none';
+    return;
+  }
+  container.style.display = '';
 
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;

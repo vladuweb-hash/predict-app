@@ -180,8 +180,10 @@ function setCachedPrice(assetId, price) {
 }
 
 function pickRandomAssets(count = 5) {
-  const shuffled = [...ASSETS].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, Math.min(count, shuffled.length));
+  const crypto = ASSETS.filter(a => a.type === 'crypto').sort(() => Math.random() - 0.5);
+  const other = ASSETS.filter(a => a.type !== 'crypto').sort(() => Math.random() - 0.5);
+  // Always pick enough crypto to guarantee 5, plus some extras
+  return [...crypto, ...other].slice(0, Math.max(count, 8));
 }
 
 function getWeekKey() {
@@ -398,26 +400,29 @@ async function fetchCurrentPrices(assetIds) {
   return prices;
 }
 
+const BINANCE_MAP = { bitcoin: 'BTCUSDT', ethereum: 'ETHUSDT', solana: 'SOLUSDT', dogecoin: 'DOGEUSDT', 'the-open-network': 'TONUSDT', ripple: 'XRPUSDT', binancecoin: 'BNBUSDT', cardano: 'ADAUSDT', gold: 'PAXGUSDT' };
+
 async function fetchSparkline(assetId) {
   const asset = ASSETS.find(a => a.id === assetId);
   if (!asset) return null;
 
+  // Binance klines — works for all crypto + gold (via PAXG)
+  const sym = BINANCE_MAP[assetId];
+  if (sym) {
+    try {
+      const data = await fetchJSON(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=5m&limit=288`);
+      if (Array.isArray(data) && data.length > 2) return data.map(k => parseFloat(k[4]));
+    } catch (e) { console.error(`[Sparkline] Binance ${sym}:`, e.message); }
+  }
+
+  // CoinGecko for crypto
   if (asset.type === 'crypto') {
-    // Try CoinGecko first
     try {
       const data = await fetchJSON(`https://api.coingecko.com/api/v3/coins/${assetId}/market_chart?vs_currency=usd&days=1`);
-      if (data?.prices?.length > 0) return data.prices.map(p => p[1]);
+      if (data?.prices?.length > 2) return data.prices.map(p => p[1]);
     } catch (e) { /* skip */ }
-    // Fallback: Binance klines
-    const binMap = { bitcoin: 'BTCUSDT', ethereum: 'ETHUSDT', solana: 'SOLUSDT', dogecoin: 'DOGEUSDT', 'the-open-network': 'TONUSDT', ripple: 'XRPUSDT', binancecoin: 'BNBUSDT', cardano: 'ADAUSDT' };
-    const sym = binMap[assetId];
-    if (sym) {
-      try {
-        const data = await fetchJSON(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=5m&limit=288`);
-        if (Array.isArray(data)) return data.map(k => parseFloat(k[4])); // close prices
-      } catch (e) { /* skip */ }
-    }
   }
+
   return null;
 }
 

@@ -230,6 +230,20 @@ app.get('/api/rounds/history', authMiddleware, async (req, res) => {
   }
 });
 
+/** Текущие цены по списку активов (для «живого» экрана ожидания, до 12 id) */
+app.get('/api/prices/live', authMiddleware, async (req, res) => {
+  try {
+    const raw = String(req.query.ids || '');
+    const ids = [...new Set(raw.split(',').map(s => s.trim()).filter(Boolean))].slice(0, 12);
+    if (ids.length === 0) return res.json({ ok: true, prices: {} });
+    const prices = await db.fetchCurrentPrices(ids);
+    res.json({ ok: true, prices });
+  } catch (e) {
+    console.error('[Prices/live]', e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // --- Health (keep-alive: ответ сразу; резолв в фоне чтобы cron не зависал) ---
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, uptime: process.uptime() | 0 });

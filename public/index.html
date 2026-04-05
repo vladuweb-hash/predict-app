@@ -96,6 +96,57 @@ a{color:var(--accent2);text-decoration:none}
 .invite-code-block{text-align:center;margin:16px 0;padding:24px;background:var(--bg);border-radius:14px;border:2px dashed var(--accent)}
 .invite-code{font-size:28px;font-weight:800;letter-spacing:4px;color:var(--accent2);margin:8px 0}
 
+/* Duel CTA — заметный блок после раунда */
+.duel-cta-banner{
+  position:relative;overflow:hidden;border-radius:20px;padding:24px 18px 22px;text-align:center;margin-top:14px;
+  background:linear-gradient(145deg,rgba(108,92,231,.42) 0%,rgba(9,132,227,.18) 45%,rgba(162,155,254,.12) 100%);
+  border:1px solid rgba(162,155,254,.55);
+  box-shadow:0 8px 32px rgba(0,0,0,.35),0 0 28px rgba(108,92,231,.25),inset 0 1px 0 rgba(255,255,255,.1);
+}
+.duel-cta-emoji-wrap{margin-bottom:10px}
+.duel-cta-emoji{font-size:48px;display:inline-block;animation:duelPulse 2.2s ease-in-out infinite}
+@keyframes duelPulse{0%,100%{transform:scale(1);filter:drop-shadow(0 0 8px rgba(162,155,254,.5))}50%{transform:scale(1.08);filter:drop-shadow(0 0 18px rgba(108,92,231,.85))}}
+.duel-cta-title{font-size:20px;font-weight:800;margin-bottom:8px;letter-spacing:.02em;color:#fff;text-shadow:0 0 20px rgba(162,155,254,.5)}
+.duel-cta-sub{font-size:14px;color:rgba(232,232,240,.85);line-height:1.45;margin-bottom:16px;max-width:280px;margin-left:auto;margin-right:auto}
+.duel-cta-btn{
+  background:linear-gradient(135deg,#7c6cf0,#0984e3) !important;color:#fff !important;border:none !important;width:100%;
+  padding:16px 20px;font-size:17px;font-weight:800;border-radius:16px;
+  box-shadow:0 6px 24px rgba(108,92,231,.45),inset 0 1px 0 rgba(255,255,255,.2);
+}
+.duel-cta-btn:active{transform:scale(.98);opacity:.95}
+
+/* Живые цены на экране «все предсказания сделаны» */
+.summary-live-row{
+  background:var(--bg2);border-radius:14px;padding:12px 14px;margin-bottom:10px;border:1px solid var(--bg3);
+}
+.slr-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:10px}
+.slr-emoji{font-size:26px;line-height:1}
+.slr-meta{flex:1;min-width:0}
+.slr-name{font-weight:700;font-size:15px}
+.slr-start{font-size:12px;color:var(--text2);margin-top:4px;line-height:1.35}
+.slr-start .up{color:var(--green);font-weight:700}
+.slr-start .down{color:var(--red);font-weight:700}
+.slr-live{border-top:1px solid var(--bg3);padding-top:10px;margin-top:2px}
+.slr-live-top{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px 12px;margin-bottom:8px}
+.slr-live-label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text2)}
+.slr-live-val{font-size:18px;font-weight:800;color:var(--accent2)}
+.slr-live-pct{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+.slr-live-pct.pct-up{color:var(--green)}
+.slr-live-pct.pct-down{color:var(--red)}
+.slr-live-pct.pct-flat{color:var(--text2)}
+.slr-meter{position:relative;height:10px;background:var(--bg);border-radius:6px;margin-top:4px}
+.slr-meter-line{position:absolute;left:50%;top:0;bottom:0;width:2px;margin-left:-1px;background:rgba(232,232,240,.25);z-index:1;border-radius:1px}
+.slr-meter-dot{
+  position:absolute;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;z-index:2;
+  transition:left .45s ease-out,background .2s,box-shadow .2s;
+}
+.slr-meter-dot.dot-up{background:var(--green);box-shadow:0 0 10px rgba(0,184,148,.6)}
+.slr-meter-dot.dot-down{background:var(--red);box-shadow:0 0 10px rgba(255,107,107,.55)}
+.slr-meter-dot.dot-flat{background:var(--text2);box-shadow:none}
+.tabular{font-variant-numeric:tabular-nums}
+.live-pulse{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);margin-right:6px;vertical-align:middle;animation:liveBlink 1.2s ease-in-out infinite}
+@keyframes liveBlink{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.85)}}
+
 /* Raffle */
 .raffle-prize{text-align:center;padding:32px 16px}
 .raffle-prize .stars{font-size:56px;font-weight:800;color:var(--gold)}
@@ -187,6 +238,64 @@ let activeRound = null;
 let currentQuestionIdx = 0;
 let sparklineCache = {};
 let timerInterval = null;
+let livePriceInterval = null;
+
+function stopLivePriceUpdates() {
+  if (livePriceInterval) {
+    clearInterval(livePriceInterval);
+    livePriceInterval = null;
+  }
+}
+
+function duelCtaHtml() {
+  return `<div class="duel-cta-banner" role="region" aria-label="Дуэли">
+    <div class="duel-cta-emoji-wrap"><span class="duel-cta-emoji">⚔️</span></div>
+    <div class="duel-cta-title">Дуэль с другом</div>
+    <p class="duel-cta-sub">Те же 5 активов — кто угадает точнее? Победитель сравнивается по очкам.</p>
+    <button type="button" class="btn duel-cta-btn" onclick="showTab('duels')">Вызвать на дуэль</button>
+  </div>`;
+}
+
+async function tickLivePrices(questions) {
+  const ids = [...new Set(questions.map(q => q.asset))].join(',');
+  try {
+    const data = await api('/api/prices/live?ids=' + encodeURIComponent(ids));
+    if (!data.ok || !data.prices) return;
+    questions.forEach((q, i) => {
+      const cur = data.prices[q.asset];
+      const start = Number(q.price_at_start);
+      const elV = document.getElementById('slLive-' + i);
+      const elP = document.getElementById('slPct-' + i);
+      const elDot = document.getElementById('slDot-' + i);
+      if (!elV) return;
+      if (cur == null || !Number.isFinite(cur) || !Number.isFinite(start) || start === 0) {
+        elV.textContent = '—';
+        if (elP) { elP.textContent = ''; elP.className = 'slr-live-pct'; }
+        return;
+      }
+      elV.textContent = formatPrice(cur, q.asset);
+      const pct = ((cur - start) / start) * 100;
+      const sign = pct >= 0 ? '+' : '';
+      if (elP) {
+        elP.textContent = sign + pct.toFixed(3) + '%';
+        elP.className = 'slr-live-pct ' + (pct > 0.05 ? 'pct-up' : pct < -0.05 ? 'pct-down' : 'pct-flat');
+      }
+      if (elDot) {
+        const clamp = Math.max(-2.5, Math.min(2.5, pct));
+        const pos = 50 + (clamp / 2.5) * 42;
+        elDot.style.left = pos + '%';
+        elDot.classList.remove('dot-up', 'dot-down', 'dot-flat');
+        elDot.classList.add(pct > 0.05 ? 'dot-up' : pct < -0.05 ? 'dot-down' : 'dot-flat');
+      }
+    });
+  } catch (e) { /* тихо */ }
+}
+
+function startLivePriceUpdates(questions) {
+  stopLivePriceUpdates();
+  tickLivePrices(questions);
+  livePriceInterval = setInterval(() => tickLivePrices(questions), 4000);
+}
 
 const $ = id => document.getElementById(id);
 const content = $('content');
@@ -238,6 +347,7 @@ function showTab(tab) {
     b.classList.toggle('active', ['play','duels','raffle','profile'][i] === tab);
   });
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  stopLivePriceUpdates();
 
   if (tab === 'play') loadPlay();
   else if (tab === 'duels') loadDuels();
@@ -248,6 +358,7 @@ function showTab(tab) {
 // --- PLAY ---
 
 async function loadPlay() {
+  stopLivePriceUpdates();
   content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
 
   const data = await api('/api/round/check');
@@ -396,17 +507,28 @@ async function submitAnswer(roundId, idx, answer, btnEl) {
 function renderPredictionSummary(round, questions) {
   const resolveAt = new Date(round.resolve_after);
 
-  const rows = questions.map(q => {
+  const rows = questions.map((q, i) => {
     const arrow = q.user_answer === 'up' ? '📈 Выше' : '📉 Ниже';
-    const price = formatPrice(q.price_at_start, q.asset);
+    const predClass = q.user_answer === 'up' ? 'up' : 'down';
+    const start = Number(q.price_at_start);
+    const startStr = formatPrice(start, q.asset);
     return `
-      <div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg2);border-radius:10px;margin-bottom:6px">
-        <div style="font-size:24px">${q.asset_emoji || ''}</div>
-        <div style="flex:1">
-          <div style="font-weight:600;font-size:14px">${q.asset_label}</div>
-          <div style="font-size:12px;color:var(--text2)">${price}</div>
+      <div class="summary-live-row" data-idx="${i}" data-asset="${q.asset}">
+        <div class="slr-head">
+          <div class="slr-emoji">${q.asset_emoji || ''}</div>
+          <div class="slr-meta">
+            <div class="slr-name">${q.asset_label}</div>
+            <div class="slr-start">Старт: <span class="tabular">${startStr}</span> · прогноз <b class="${predClass}">${arrow}</b></div>
+          </div>
         </div>
-        <div style="font-size:13px;font-weight:600;color:${q.user_answer === 'up' ? 'var(--green)' : 'var(--red)'}">${arrow}</div>
+        <div class="slr-live">
+          <div class="slr-live-top">
+            <span class="slr-live-label"><span class="live-pulse"></span>Сейчас</span>
+            <span class="slr-live-val tabular" id="slLive-${i}">…</span>
+            <span class="slr-live-pct" id="slPct-${i}"></span>
+          </div>
+          <div class="slr-meter"><div class="slr-meter-line"></div><div class="slr-meter-dot dot-flat" id="slDot-${i}" style="left:50%"></div></div>
+        </div>
       </div>`;
   }).join('');
 
@@ -424,20 +546,19 @@ function renderPredictionSummary(round, questions) {
   }
 
   content.innerHTML = `
-    <div class="card" style="text-align:center;padding:24px 16px">
+    <div class="card" style="text-align:center;padding:22px 14px 18px">
       <div style="font-size:36px;margin-bottom:8px">✅</div>
       <h3 style="margin:0 0 4px">Все предсказания сделаны!</h3>
-      <p style="color:var(--text2);font-size:13px;margin-bottom:16px">Результат через <span id="summaryTimer">--:--</span></p>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:6px">Официальный результат через <span id="summaryTimer" style="color:var(--accent2);font-weight:700">--:--</span></p>
+      <p style="color:var(--text2);font-size:12px;margin-bottom:14px;opacity:.9">Ниже — <b>живые цены</b> (обновление ~каждые 4 сек). Итог раунда всё равно по цене в момент завершения.</p>
       ${rows}
-      <p style="color:var(--text2);font-size:12px;margin-top:12px">Уведомление придёт, когда раунд завершится</p>
+      <p style="color:var(--text2);font-size:11px;margin-top:12px">Мы пришлём уведомление, когда раунд закроется.</p>
     </div>
-    <div class="card-sm" style="text-align:center">
-      <p style="font-size:13px;color:var(--text2)">Можешь пока сыграть дуэль с другом! ⚔️</p>
-      <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="showTab('duels')">Дуэли</button>
-    </div>`;
+    ${duelCtaHtml()}`;
 
   updateTimer();
   timerInterval = setInterval(updateTimer, 1000);
+  startLivePriceUpdates(questions);
 }
 
 function renderWaiting(round) {
@@ -463,10 +584,7 @@ function renderWaiting(round) {
       <div class="timer-text" id="waitTimer">--:--</div>
       <div class="timer-label">Цены обновятся и раунд завершится</div>
     </div>
-    <div class="card-sm" style="text-align:center">
-      <p style="font-size:13px;color:var(--text2)">Можешь пока сыграть дуэль с другом! ⚔️</p>
-      <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="showTab('duels')">Дуэли</button>
-    </div>`;
+    ${duelCtaHtml()}`;
 
   updateTimer();
   timerInterval = setInterval(updateTimer, 1000);
@@ -475,6 +593,7 @@ function renderWaiting(round) {
 async function checkResults(roundId) {
   const data = await api(`/api/round/${roundId}/results`);
   if (data.round?.is_resolved) {
+    stopLivePriceUpdates();
     renderResults(data.round, data.questions);
   } else {
     setTimeout(() => checkResults(roundId), 5000);

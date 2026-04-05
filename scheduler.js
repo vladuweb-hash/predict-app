@@ -4,6 +4,45 @@ let _bot = null;
 
 function setBot(bot) { _bot = bot; }
 
+async function processRoundResolution(round) {
+  try {
+    const result = await db.resolveRound(round.id);
+    if (!result) return;
+
+    console.log(`[Scheduler] Round #${round.id}: ${result.correctCount}/5`);
+
+    const newAchievements = await db.checkAchievements(round.user_id);
+
+    const dmId = result.user && (result.user.chat_id || result.user.telegram_id);
+    if (_bot && dmId) {
+      let msg;
+      if (result.is5of5) {
+        msg = `🎯 Раунд #${round.id} завершён: 5/5! Идеально!\n`;
+        if (result.premiumGranted) {
+          msg += `🌟 Premium на 3 дня активирован!\n`;
+        }
+        msg += `🎫 +1 билет в розыгрыш недели!`;
+        if (result.streak > 1) msg += `\n🔥 Серия 5/5: ${result.streak} подряд!`;
+      } else {
+        const emoji = result.correctCount >= 3 ? '👍' : '😔';
+        msg = `${emoji} Раунд #${round.id}: ${result.correctCount}/5`;
+      }
+
+      if (newAchievements.length > 0) {
+        const defs = db.ACHIEVEMENT_DEFS;
+        for (const a of newAchievements) {
+          const def = defs.find(d => d.type === a.type);
+          if (def) msg += `\n🏅 Новая ачивка: ${def.emoji} ${def.title}!`;
+        }
+      }
+
+      try { await _bot.sendMessage(dmId, msg); } catch (e) { /* user may have blocked bot */ }
+    }
+  } catch (e) {
+    console.error(`[Scheduler] Failed to resolve round #${round.id}:`, e.message);
+  }
+}
+
 async function resolveRounds() {
   try {
     const pending = await db.getPendingRounds();
@@ -12,45 +51,22 @@ async function resolveRounds() {
     console.log(`[Scheduler] Resolving ${pending.length} round(s)...`);
 
     for (const round of pending) {
-      try {
-        const result = await db.resolveRound(round.id);
-        if (!result) continue;
-
-        console.log(`[Scheduler] Round #${round.id}: ${result.correctCount}/5`);
-
-        const newAchievements = await db.checkAchievements(round.user_id);
-
-        const dmId = result.user && (result.user.chat_id || result.user.telegram_id);
-        if (_bot && dmId) {
-          let msg;
-          if (result.is5of5) {
-            msg = `🎯 Раунд #${round.id} завершён: 5/5! Идеально!\n`;
-            if (result.premiumGranted) {
-              msg += `🌟 Premium на 3 дня активирован!\n`;
-            }
-            msg += `🎫 +1 билет в розыгрыш недели!`;
-            if (result.streak > 1) msg += `\n🔥 Серия 5/5: ${result.streak} подряд!`;
-          } else {
-            const emoji = result.correctCount >= 3 ? '👍' : '😔';
-            msg = `${emoji} Раунд #${round.id}: ${result.correctCount}/5`;
-          }
-
-          if (newAchievements.length > 0) {
-            const defs = db.ACHIEVEMENT_DEFS;
-            for (const a of newAchievements) {
-              const def = defs.find(d => d.type === a.type);
-              if (def) msg += `\n🏅 Новая ачивка: ${def.emoji} ${def.title}!`;
-            }
-          }
-
-          try { await _bot.sendMessage(dmId, msg); } catch (e) { /* user may have blocked bot */ }
-        }
-      } catch (e) {
-        console.error(`[Scheduler] Failed to resolve round #${round.id}:`, e.message);
-      }
+      await processRoundResolution(round);
     }
   } catch (e) {
     console.error('[Scheduler] resolveRounds error:', e.message);
+  }
+}
+
+/** Только раунды текущего пользователя — быстро для API, не блокирует весь сервер */
+async function resolvePendingRoundsForUser(userId) {
+  try {
+    const pending = await db.getPendingRoundsForUser(userId);
+    for (const round of pending) {
+      await processRoundResolution(round);
+    }
+  } catch (e) {
+    console.error('[Scheduler] resolvePendingRoundsForUser error:', e.message);
   }
 }
 
@@ -159,4 +175,6 @@ function start() {
   }, 10000);
 }
 
-module.exports = { setBot, start, resolveRounds, resolveDuels, weeklyRaffleCheck };
+module.exports = {
+  setBot, start, resolveRounds, resolvePendingRoundsForUser, resolveDuels, weeklyRaffleCheck,
+};

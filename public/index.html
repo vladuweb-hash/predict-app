@@ -253,6 +253,11 @@ async function loadPlay() {
   const data = await api('/api/round/check');
   if (!data.ok) { content.innerHTML = '<div class="card">Ошибка загрузки</div>'; return; }
 
+  if (data.status === 'show_results' && data.round && data.questions) {
+    renderResults(data.round, data.questions);
+    return;
+  }
+
   if (data.status === 'in_progress') {
     activeRound = data.round;
     const questions = data.questions;

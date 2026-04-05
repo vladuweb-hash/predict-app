@@ -102,12 +102,14 @@ app.post('/api/auth', async (req, res) => {
       }
     }
 
-    // Resolve any pending rounds/duels on user visit (Render sleeps after 15min)
-    try {
-      const scheduler = require('./scheduler');
-      await scheduler.resolveRounds();
-      await scheduler.resolveDuels();
-    } catch (e) { console.error('[Auth] Resolve on visit error:', e.message); }
+    // Фоном: полный резолв нельзя await — блокирует вход (много раундов + API цен = таймаут Telegram)
+    setImmediate(() => {
+      try {
+        const scheduler = require('./scheduler');
+        scheduler.resolveRounds().catch(e => console.error('[Auth] resolveRounds:', e.message));
+        scheduler.resolveDuels().catch(e => console.error('[Auth] resolveDuels:', e.message));
+      } catch (e) { console.error('[Auth] Resolve bg:', e.message); }
+    });
 
     res.json({
       ok: true, user, isNew, botUsername,
@@ -126,14 +128,16 @@ app.get('/api/round/check', authMiddleware, async (req, res) => {
   try {
     const userId = req.tgUser.id;
     let active = await db.getActiveRound(userId);
+    let justResolvedId = null;
 
-    // If round is complete and past resolve time, try resolving now
+    // Если час прошёл — резолвим только раунды этого юзера (быстро)
     if (active && !active.is_resolved && active.is_complete) {
       const resolveAt = new Date(active.resolve_after);
       if (resolveAt <= new Date()) {
         try {
           const scheduler = require('./scheduler');
-          await scheduler.resolveRounds();
+          await scheduler.resolvePendingRoundsForUser(userId);
+          justResolvedId = active.id;
           active = await db.getActiveRound(userId);
         } catch (e) { /* continue with current state */ }
       }
@@ -146,7 +150,18 @@ app.get('/api/round/check', authMiddleware, async (req, res) => {
         round: active, questions
       });
     }
+
     const canStart = await db.canStartRound(userId);
+
+    // Сразу показать итог раунда, который только что закрыли (иначе экран «Начать» без цифр)
+    if (justResolvedId) {
+      const round = await db.getRound(justResolvedId);
+      if (round && round.is_resolved) {
+        const questions = await db.getRoundQuestions(justResolvedId);
+        return res.json({ ok: true, status: 'show_results', round, questions, canStart });
+      }
+    }
+
     res.json({ ok: true, status: 'ready', canStart });
   } catch (e) {
     console.error('[Round/check]', e);
@@ -215,14 +230,16 @@ app.get('/api/rounds/history', authMiddleware, async (req, res) => {
   }
 });
 
-// --- Health (keep-alive for cron pings; also resolve pending so notifications fire while awake) ---
-app.get('/api/health', async (req, res) => {
-  try {
-    const scheduler = require('./scheduler');
-    await scheduler.resolveRounds();
-    await scheduler.resolveDuels();
-  } catch (e) { /* ignore */ }
+// --- Health (keep-alive: ответ сразу; резолв в фоне чтобы cron не зависал) ---
+app.get('/api/health', (req, res) => {
   res.json({ ok: true, uptime: process.uptime() | 0 });
+  setImmediate(() => {
+    try {
+      const scheduler = require('./scheduler');
+      scheduler.resolveRounds().catch(() => {});
+      scheduler.resolveDuels().catch(() => {});
+    } catch (e) { /* ignore */ }
+  });
 });
 
 // --- Debug ---

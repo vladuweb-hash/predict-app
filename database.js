@@ -707,6 +707,15 @@ async function getPendingRounds() {
   return rows;
 }
 
+/** Только раунды одного пользователя — для быстрого /api/round/check без обхода всех юзеров */
+async function getPendingRoundsForUser(userId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM rounds WHERE user_id=$1 AND is_complete=true AND is_resolved=false AND resolve_after <= NOW()`,
+    [userId]
+  );
+  return rows;
+}
+
 async function getRecentRounds(userId, limit = 10) {
   const { rows } = await pool.query(
     'SELECT * FROM rounds WHERE user_id=$1 ORDER BY started_at DESC LIMIT $2', [userId, limit]
@@ -1035,7 +1044,7 @@ module.exports = {
   fetchCurrentPrices, fetchSparkline, getWeekKey,
   getUser, createUser, saveUser, isPremiumActive, getAllUsers,
   canStartRound, createRound, getRound, getRoundQuestions, getActiveRound,
-  answerRoundQuestion, resolveRound, getPendingRounds, getRecentRounds,
+  answerRoundQuestion, resolveRound, getPendingRounds, getPendingRoundsForUser, getRecentRounds,
   generateInviteCode, canCreateDuel, createDuel, getDuel, getDuelByCode,
   getDuelQuestions, joinDuel, answerDuelQuestion, resolveDuel, getPendingDuels, getUserDuels,
   addRaffleTicket, getRaffleTickets, getUserTickets, getRaffle, drawRaffle,

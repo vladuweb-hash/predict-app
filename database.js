@@ -154,6 +154,9 @@ async function initDB() {
 
   // Add missing columns to users table (for existing DBs created before v3)
   const alterQueries = [
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS is_premium BOOLEAN DEFAULT false',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_until TIMESTAMPTZ',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_5of5 INTEGER DEFAULT 0',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS best_streak INTEGER DEFAULT 0',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS total_rounds INTEGER DEFAULT 0',

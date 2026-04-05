@@ -1,14 +1,43 @@
 const { Pool } = require('pg');
 
+function pgSslOption() {
+  const url = process.env.DATABASE_URL || '';
+  const off = /^(0|false)$/i.test(String(process.env.DATABASE_SSL || ''));
+  const on = /^(1|true|require)$/i.test(String(process.env.DATABASE_SSL || ''));
+  if (off) return false;
+  if (on) return { rejectUnauthorized: false };
+  if (/sslmode=require/i.test(url)) return { rejectUnauthorized: false };
+  // Облачные Postgres без "render.com" в строке (Supabase, AWS RDS, Railway и т.д.)
+  if (/(render\.com|neon\.tech|supabase\.co|pooler\.supabase|amazonaws\.com|railway\.app|cockroachlabs\.cloud|azure\.com)/i.test(url)) {
+    return { rejectUnauthorized: false };
+  }
+  return false;
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes('render.com') || process.env.DATABASE_URL?.includes('neon.tech')
-    ? { rejectUnauthorized: false } : false
+  ssl: pgSslOption(),
+  max: 10,
+  connectionTimeoutMillis: 15000,
+  idleTimeoutMillis: 30000,
 });
 
 // --- Schema ---
 
 async function initDB() {
+  const maxAttempts = 8;
+  const delayMs = 2500;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await pool.query('SELECT 1');
+      break;
+    } catch (e) {
+      console.error(`[DB] Ping attempt ${attempt}/${maxAttempts}:`, e.code || e.message);
+      if (attempt === maxAttempts) throw e;
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       telegram_id BIGINT PRIMARY KEY,

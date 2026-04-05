@@ -5,6 +5,10 @@ const db = require('./database');
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 const WEBAPP_URL = process.env.WEBAPP_URL || '';
 
+bot.on('polling_error', (err) => {
+  console.error('[Bot] polling_error:', err.code || '', err.message);
+});
+
 bot.onText(/\/start(.*)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const tgUser = msg.from;

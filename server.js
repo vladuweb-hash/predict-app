@@ -503,7 +503,15 @@ app.post('/api/admin/reset-all', async (req, res) => {
 // --- Start ---
 
 async function start() {
-  await db.initDB();
+  console.log('[Server] Node', process.version);
+  console.log('[Server] DATABASE_URL:', process.env.DATABASE_URL ? 'set' : 'MISSING');
+
+  try {
+    await db.initDB();
+  } catch (e) {
+    console.error('[Server] initDB failed — проверь DATABASE_URL и SSL (для облака задай DATABASE_SSL=true):', e.message);
+    process.exit(1);
+  }
 
   try {
     bot = initBot();
@@ -524,6 +532,9 @@ async function start() {
   app.listen(PORT, () => console.log(`[Server] Running on :${PORT}`));
 }
 
-start().catch(console.error);
+start().catch((e) => {
+  console.error('[Server] Fatal:', e);
+  process.exit(1);
+});
 
 module.exports = { app, getBot: () => bot };

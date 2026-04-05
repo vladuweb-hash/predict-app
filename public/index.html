@@ -258,7 +258,7 @@ async function loadPlay() {
     const firstUnanswered = questions.findIndex(q => !q.user_answer);
     currentQuestionIdx = firstUnanswered >= 0 ? firstUnanswered : questions.length;
     if (currentQuestionIdx >= questions.length) {
-      renderWaiting(data.round);
+      renderPredictionSummary(data.round, questions);
     } else {
       renderQuestion(data.round, questions, currentQuestionIdx);
     }
@@ -270,10 +270,11 @@ async function loadPlay() {
       if (results.round?.is_resolved) {
         renderResults(results.round, results.questions);
       } else {
-        renderWaiting(round);
+        renderPredictionSummary(round, results.questions || []);
       }
     } else {
-      renderWaiting(round);
+      const results = await api(`/api/round/${round.id}/results`);
+      renderPredictionSummary(round, results.questions || []);
     }
   } else {
     if (data.canStart?.ok) {
@@ -378,12 +379,59 @@ async function submitAnswer(roundId, idx, answer, btnEl) {
 
   if (data.is_complete) {
     const round = await api(`/api/round/${roundId}/results`);
-    renderWaiting(round.round || activeRound);
+    renderPredictionSummary(round.round || activeRound, round.questions || []);
   } else {
     currentQuestionIdx = idx + 1;
     const allQ = await api(`/api/round/${roundId}/results`);
     setTimeout(() => renderQuestion(activeRound, allQ.questions, idx + 1), 300);
   }
+}
+
+function renderPredictionSummary(round, questions) {
+  const resolveAt = new Date(round.resolve_after);
+
+  const rows = questions.map(q => {
+    const arrow = q.user_answer === 'up' ? '📈 Выше' : '📉 Ниже';
+    const price = formatPrice(q.price_at_start, q.asset);
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg2);border-radius:10px;margin-bottom:6px">
+        <div style="font-size:24px">${q.asset_emoji || ''}</div>
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:14px">${q.asset_label}</div>
+          <div style="font-size:12px;color:var(--text2)">${price}</div>
+        </div>
+        <div style="font-size:13px;font-weight:600;color:${q.user_answer === 'up' ? 'var(--green)' : 'var(--red)'}">${arrow}</div>
+      </div>`;
+  }).join('');
+
+  function updateTimer() {
+    const diff = resolveAt - new Date();
+    if (diff <= 0) {
+      clearInterval(timerInterval);
+      checkResults(round.id);
+      return;
+    }
+    const min = Math.floor(diff / 60000);
+    const sec = Math.floor((diff % 60000) / 1000);
+    const el = document.getElementById('summaryTimer');
+    if (el) el.textContent = `${min}:${String(sec).padStart(2, '0')}`;
+  }
+
+  content.innerHTML = `
+    <div class="card" style="text-align:center;padding:24px 16px">
+      <div style="font-size:36px;margin-bottom:8px">✅</div>
+      <h3 style="margin:0 0 4px">Все предсказания сделаны!</h3>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:16px">Результат через <span id="summaryTimer">--:--</span></p>
+      ${rows}
+      <p style="color:var(--text2);font-size:12px;margin-top:12px">Уведомление придёт, когда раунд завершится</p>
+    </div>
+    <div class="card-sm" style="text-align:center">
+      <p style="font-size:13px;color:var(--text2)">Можешь пока сыграть дуэль с другом! ⚔️</p>
+      <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="showTab('duels')">Дуэли</button>
+    </div>`;
+
+  updateTimer();
+  timerInterval = setInterval(updateTimer, 1000);
 }
 
 function renderWaiting(round) {
@@ -797,12 +845,33 @@ function showPremiumPopup() { $('premiumPopup').classList.add('show'); }
 function closePremiumPopup() { $('premiumPopup').classList.remove('show'); }
 
 async function buyPremium() {
-  if (tg?.openInvoice) {
-    toast('Оплата через Stars — свяжитесь с ботом');
-  } else {
-    toast('Откройте в Telegram для оплаты');
+  const btn = document.querySelector('#premiumPopup .btn-accent');
+  if (btn) { btn.disabled = true; btn.textContent = 'Загрузка...'; }
+
+  try {
+    const data = await apiPost('/api/premium/buy', {});
+    if (!data.ok || !data.invoiceUrl) {
+      toast(data.error || 'Ошибка создания счёта');
+      return;
+    }
+    if (tg?.openInvoice) {
+      tg.openInvoice(data.invoiceUrl, (status) => {
+        if (status === 'paid') {
+          toast('✅ Premium активирован!');
+          closePremiumPopup();
+          loadProfile();
+        } else if (status === 'cancelled') {
+          toast('Оплата отменена');
+        }
+      });
+    } else {
+      window.open(data.invoiceUrl, '_blank');
+    }
+  } catch (e) {
+    toast('Ошибка сети');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Купить за 25⭐'; }
   }
-  closePremiumPopup();
 }
 
 // --- Helpers ---

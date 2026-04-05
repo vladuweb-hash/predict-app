@@ -85,9 +85,9 @@ app.post('/api/auth', async (req, res) => {
     // Resolve any pending rounds/duels on user visit (Render sleeps after 15min)
     try {
       const scheduler = require('./scheduler');
-      scheduler.resolveRounds();
-      scheduler.resolveDuels();
-    } catch (e) { /* non-critical */ }
+      await scheduler.resolveRounds();
+      await scheduler.resolveDuels();
+    } catch (e) { console.error('[Auth] Resolve on visit error:', e.message); }
 
     res.json({
       ok: true, user, isNew, botUsername,
@@ -105,7 +105,20 @@ app.post('/api/auth', async (req, res) => {
 app.get('/api/round/check', authMiddleware, async (req, res) => {
   try {
     const userId = req.tgUser.id;
-    const active = await db.getActiveRound(userId);
+    let active = await db.getActiveRound(userId);
+
+    // If round is complete and past resolve time, try resolving now
+    if (active && !active.is_resolved && active.is_complete) {
+      const resolveAt = new Date(active.resolve_after);
+      if (resolveAt <= new Date()) {
+        try {
+          const scheduler = require('./scheduler');
+          await scheduler.resolveRounds();
+          active = await db.getActiveRound(userId);
+        } catch (e) { /* continue with current state */ }
+      }
+    }
+
     if (active && !active.is_resolved) {
       const questions = await db.getRoundQuestions(active.id);
       return res.json({
@@ -299,13 +312,19 @@ app.get('/api/duels/history', authMiddleware, async (req, res) => {
 
 app.post('/api/premium/buy', authMiddleware, async (req, res) => {
   try {
-    res.json({
-      ok: true,
-      invoiceUrl: null,
-      message: 'Use Telegram Stars payment. Send invoice via bot.'
-    });
+    if (!bot) return res.status(500).json({ error: 'Bot not available' });
+    const link = await bot.createInvoiceLink(
+      '⭐ Premium — 1 неделя',
+      'Раунд каждый час, безлимит дуэлей, больше шансов на призы!',
+      'premium_week',
+      '',
+      'XTR',
+      [{ label: 'Premium 1 неделя', amount: 25 }]
+    );
+    res.json({ ok: true, invoiceUrl: link });
   } catch (e) {
-    res.status(500).json({ error: 'Server error' });
+    console.error('[Premium] Invoice link error:', e.message);
+    res.status(500).json({ error: 'Не удалось создать счёт' });
   }
 });
 

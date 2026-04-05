@@ -82,6 +82,13 @@ app.post('/api/auth', async (req, res) => {
       }
     }
 
+    // Resolve any pending rounds/duels on user visit (Render sleeps after 15min)
+    try {
+      const scheduler = require('./scheduler');
+      scheduler.resolveRounds();
+      scheduler.resolveDuels();
+    } catch (e) { /* non-critical */ }
+
     res.json({
       ok: true, user, isNew, botUsername,
       premium: db.isPremiumActive(user),
@@ -175,12 +182,31 @@ app.get('/api/rounds/history', authMiddleware, async (req, res) => {
   }
 });
 
-// --- Debug: test price APIs ---
+// --- Debug ---
 app.get('/api/debug/prices', async (req, res) => {
   try {
     const testIds = ['bitcoin', 'ethereum'];
     const prices = await db.fetchCurrentPrices(testIds);
     res.json({ ok: true, prices, timestamp: new Date().toISOString() });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
+
+app.get('/api/debug/status', async (req, res) => {
+  try {
+    if (req.headers['x-admin-key'] !== process.env.ADMIN_KEY) return res.status(403).json({ error: 'Forbidden' });
+    const users = await db.getAllUsers();
+    const pendingRounds = await db.getPendingRounds();
+    const pendingDuels = await db.getPendingDuels();
+    res.json({
+      ok: true,
+      users: users.map(u => ({ id: u.telegram_id, name: u.first_name, chat_id: u.chat_id, notifications: u.notifications, rounds: u.total_rounds })),
+      pending_rounds: pendingRounds.length,
+      pending_duels: pendingDuels.length,
+      bot_active: !!bot,
+      bot_username: botUsername,
+    });
   } catch (e) {
     res.json({ ok: false, error: e.message });
   }

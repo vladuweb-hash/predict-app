@@ -182,6 +182,11 @@ app.get('/api/rounds/history', authMiddleware, async (req, res) => {
   }
 });
 
+// --- Health (keep-alive for cron pings) ---
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true, uptime: process.uptime() | 0 });
+});
+
 // --- Debug ---
 app.get('/api/debug/prices', async (req, res) => {
   try {

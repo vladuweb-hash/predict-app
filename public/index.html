@@ -115,9 +115,10 @@ a{color:var(--accent2);text-decoration:none}
 .stat-item .lbl{font-size:11px;color:var(--text2);margin-top:4px}
 
 .achievements-title{font-size:16px;font-weight:600;margin:20px 0 10px}
-.ach-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-.ach-item{text-align:center;padding:12px 4px;background:var(--bg2);border-radius:12px;opacity:.35}
-.ach-item.unlocked{opacity:1}
+.ach-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.ach-item{text-align:center;padding:10px 6px;background:var(--bg2);border-radius:12px;opacity:.35;cursor:pointer;transition:transform .15s}
+.ach-item:active{transform:scale(.95)}
+.ach-item.unlocked{opacity:1;background:var(--bg2);box-shadow:0 0 0 1px var(--accent)}
 .ach-item .ach-icon{font-size:24px}
 .ach-item .ach-name{font-size:10px;color:var(--text2);margin-top:4px;line-height:1.2}
 
@@ -751,9 +752,10 @@ async function loadProfile() {
 
   const achHtml = (data.achievementDefs || []).map(def => {
     const unlocked = data.achievements?.some(a => a.type === def.type);
-    return `<div class="ach-item ${unlocked ? 'unlocked' : ''}">
+    return `<div class="ach-item ${unlocked ? 'unlocked' : ''}" onclick="toast('${unlocked ? '✅' : '🔒'} ${def.title}: ${def.desc}')">
       <div class="ach-icon">${def.emoji}</div>
       <div class="ach-name">${def.title}</div>
+      <div style="font-size:9px;color:var(--text2);margin-top:2px">${def.desc}</div>
     </div>`;
   }).join('');
 

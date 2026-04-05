@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <title>Предскажи</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
@@ -854,7 +855,7 @@ async function buyPremium() {
       toast(data.error || 'Ошибка создания счёта');
       return;
     }
-    if (tg?.openInvoice) {
+    if (typeof tg?.openInvoice === 'function') {
       tg.openInvoice(data.invoiceUrl, (status) => {
         if (status === 'paid') {
           toast('✅ Premium активирован!');
@@ -864,6 +865,8 @@ async function buyPremium() {
           toast('Оплата отменена');
         }
       });
+    } else if (typeof tg?.openLink === 'function') {
+      tg.openLink(data.invoiceUrl);
     } else {
       window.open(data.invoiceUrl, '_blank');
     }

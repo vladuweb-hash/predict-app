@@ -8,7 +8,27 @@ const db = require('./database');
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('index.html')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    }
+  },
+}));
+
+/** Telegram Bot API JSON (node-telegram-bot-api 0.66 has no createInvoiceLink) */
+async function telegramBotApi(method, body) {
+  const token = process.env.BOT_TOKEN;
+  if (!token) throw new Error('BOT_TOKEN missing');
+  const r = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.description || String(j.error_code) || 'Telegram API error');
+  return j.result;
+}
 
 let bot = null;
 let botUsername = '';
@@ -195,8 +215,13 @@ app.get('/api/rounds/history', authMiddleware, async (req, res) => {
   }
 });
 
-// --- Health (keep-alive for cron pings) ---
-app.get('/api/health', (req, res) => {
+// --- Health (keep-alive for cron pings; also resolve pending so notifications fire while awake) ---
+app.get('/api/health', async (req, res) => {
+  try {
+    const scheduler = require('./scheduler');
+    await scheduler.resolveRounds();
+    await scheduler.resolveDuels();
+  } catch (e) { /* ignore */ }
   res.json({ ok: true, uptime: process.uptime() | 0 });
 });
 
@@ -312,19 +337,32 @@ app.get('/api/duels/history', authMiddleware, async (req, res) => {
 
 app.post('/api/premium/buy', authMiddleware, async (req, res) => {
   try {
-    if (!bot) return res.status(500).json({ error: 'Bot not available' });
-    const link = await bot.createInvoiceLink(
-      '⭐ Premium — 1 неделя',
-      'Раунд каждый час, безлимит дуэлей, больше шансов на призы!',
-      'premium_week',
-      '',
-      'XTR',
-      [{ label: 'Premium 1 неделя', amount: 25 }]
-    );
+    if (!process.env.BOT_TOKEN) return res.status(500).json({ error: 'Сервер без токена бота' });
+
+    let link;
+    if (bot && typeof bot.createInvoiceLink === 'function') {
+      link = await bot.createInvoiceLink(
+        '⭐ Premium — 1 неделя',
+        'Раунд каждый час, безлимит дуэлей, больше шансов на призы!',
+        'premium_week',
+        '',
+        'XTR',
+        [{ label: 'Premium 1 неделя', amount: 25 }]
+      );
+    } else {
+      link = await telegramBotApi('createInvoiceLink', {
+        title: '⭐ Premium — 1 неделя',
+        description: 'Раунд каждый час, безлимит дуэлей, больше шансов на призы!',
+        payload: 'premium_week',
+        provider_token: '',
+        currency: 'XTR',
+        prices: [{ label: 'Premium 1 неделя', amount: 25 }],
+      });
+    }
     res.json({ ok: true, invoiceUrl: link });
   } catch (e) {
     console.error('[Premium] Invoice link error:', e.message);
-    res.status(500).json({ error: 'Не удалось создать счёт' });
+    res.status(500).json({ error: e.message || 'Не удалось создать счёт' });
   }
 });
 

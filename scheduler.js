@@ -20,7 +20,8 @@ async function resolveRounds() {
 
         const newAchievements = await db.checkAchievements(round.user_id);
 
-        if (_bot && result.user?.chat_id) {
+        const dmId = result.user && (result.user.chat_id || result.user.telegram_id);
+        if (_bot && dmId) {
           let msg;
           if (result.is5of5) {
             msg = `🎯 Раунд #${round.id} завершён: 5/5! Идеально!\n`;
@@ -42,7 +43,7 @@ async function resolveRounds() {
             }
           }
 
-          try { await _bot.sendMessage(result.user.chat_id, msg); } catch (e) { /* user may have blocked bot */ }
+          try { await _bot.sendMessage(dmId, msg); } catch (e) { /* user may have blocked bot */ }
         }
       } catch (e) {
         console.error(`[Scheduler] Failed to resolve round #${round.id}:`, e.message);
@@ -83,8 +84,10 @@ async function resolveDuels() {
 
           const msg = `⚔️ Дуэль #${duel.id} завершена!\n${resultText}`;
 
-          if (creator?.chat_id) { try { await _bot.sendMessage(creator.chat_id, msg); } catch (e) {} }
-          if (opponent?.chat_id) { try { await _bot.sendMessage(opponent.chat_id, msg); } catch (e) {} }
+          const cId = creator && (creator.chat_id || creator.telegram_id);
+          const oId = opponent && (opponent.chat_id || opponent.telegram_id);
+          if (cId) { try { await _bot.sendMessage(cId, msg); } catch (e) {} }
+          if (oId) { try { await _bot.sendMessage(oId, msg); } catch (e) {} }
         }
       } catch (e) {
         console.error(`[Scheduler] Failed to resolve duel #${duel.id}:`, e.message);
@@ -109,8 +112,9 @@ async function weeklyRaffleCheck() {
 
     if (result.ok && _bot) {
       const winner = await db.getUser(result.winner_id);
-      if (winner?.chat_id) {
-        await _bot.sendMessage(winner.chat_id,
+      const wId = winner && (winner.chat_id || winner.telegram_id);
+      if (wId) {
+        await _bot.sendMessage(wId,
           `🎉🎉🎉 ПОЗДРАВЛЯЕМ!\n\n` +
           `Ты выиграл(а) ${result.prize_stars}⭐ в розыгрыше недели!\n` +
           `Из ${result.total_tickets} билетов — твой оказался счастливым!\n\n` +
@@ -120,9 +124,10 @@ async function weeklyRaffleCheck() {
 
       const allUsers = await db.getAllUsers();
       for (const u of allUsers) {
-        if (u.chat_id && u.telegram_id != result.winner_id) {
+        const uid = u.chat_id || u.telegram_id;
+        if (uid && u.telegram_id != result.winner_id) {
           try {
-            await _bot.sendMessage(u.chat_id,
+            await _bot.sendMessage(uid,
               `📢 Розыгрыш недели ${weekKey} завершён!\n` +
               `Победитель: ${winner?.first_name || 'Аноним'} — ${result.prize_stars}⭐!\n` +
               `Всего билетов: ${result.total_tickets}. Играй, чтобы получить билеты на следующую неделю!`

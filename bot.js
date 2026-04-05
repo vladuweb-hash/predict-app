@@ -110,7 +110,7 @@ bot.on('successful_payment', async (msg) => {
 bot.onText(/\/duel/, async (msg) => {
   const chatId = msg.chat.id;
   await bot.sendMessage(chatId,
-    '⚔️ Создай дуэль в приложении и отправь ссылку другу!',
+    '⚔️ Дуэли — создай вызов и пригласи друга в мини-приложении.',
     {
       reply_markup: {
         inline_keyboard: [[{

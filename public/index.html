@@ -720,12 +720,11 @@ async function loadDuels() {
   content.innerHTML = `
     <div class="play-header">
       <h2>⚔️ Дуэли</h2>
-      <div class="sub">Отправь другу ссылку — он сразу попадёт в дуэль, без кода.</div>
+      <div class="sub">Сразись с другом на одних и тех же активах.</div>
     </div>
     <button class="btn btn-accent" style="margin-bottom:10px" onclick="createDuel()">Создать дуэль</button>
     <p style="text-align:center;font-size:12px;color:var(--text2);margin-bottom:14px">
-      <span style="cursor:pointer;text-decoration:underline;color:var(--accent2)" onclick="showJoinDuel()" role="button">Ввести код вручную</span>
-      — если ссылка не открылась
+      <span style="cursor:pointer;text-decoration:underline;color:var(--accent2)" onclick="showJoinDuel()" role="button">У меня есть приглашение</span>
     </p>
     <div id="duelContent"><div class="loading"><div class="spinner"></div></div></div>`;
 
@@ -760,16 +759,16 @@ async function createDuel() {
   const qJson = JSON.stringify(mappedQ).replace(/"/g, '&quot;');
   content.innerHTML = `
     <div class="play-header"><h2>⚔️ Дуэль создана!</h2>
-      <div class="sub" style="margin-top:8px">Поделись ссылкой — друг откроет приложение и сразу начнёт дуэль.</div>
+      <div class="sub" style="margin-top:8px">Отправь приглашение другу.</div>
     </div>
     <div class="card" style="padding:16px;background:var(--bg2);border:1px solid rgba(162,155,254,.3);border-radius:16px;margin-bottom:12px">
-      <p style="font-size:12px;color:var(--text2);margin-bottom:8px">Ссылка-приглашение</p>
+      <p style="font-size:12px;color:var(--text2);margin-bottom:8px">Приглашение</p>
       <p style="font-size:11px;word-break:break-all;color:var(--accent2);line-height:1.4;margin-bottom:12px">${link}</p>
       <button class="btn btn-accent" onclick="shareDuel('${linkJs}')">📤 Отправить в Telegram</button>
       <button class="btn btn-outline" style="margin-top:10px" onclick="copyText('${linkJs}')">📋 Скопировать ссылку</button>
     </div>
     <details style="margin-bottom:14px;font-size:12px;color:var(--text2)">
-      <summary style="cursor:pointer;color:var(--accent2)">Код для ручного ввода</summary>
+      <summary style="cursor:pointer;color:var(--accent2)">Показать код приглашения</summary>
       <div class="invite-code-block" style="margin-top:10px">
         <div class="invite-code" style="font-size:22px">${data.invite_code}</div>
         <button class="btn btn-sm btn-outline" onclick="copyText('${data.invite_code}')">Копировать код</button>
@@ -785,18 +784,18 @@ function duelInviteLink(code) {
 }
 
 function shareDuel(link) {
-  const text = '⚔️ Дуэль! Нажми ссылку — откроется игра, код вводить не нужно.';
+  const text = '⚔️ Вызываю тебя на дуэль! Кто точнее угадает движение цен?';
   const url = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
   window.open(url, '_blank');
 }
 
 function showJoinDuel() {
   content.innerHTML = `
-    <div class="play-header"><h2>Присоединиться по коду</h2>
-      <div class="sub" style="margin-top:6px">Если друг прислал только буквы/цифры, без ссылки</div>
+    <div class="play-header"><h2>Присоединиться</h2>
+      <div class="sub" style="margin-top:6px">Введи пригласительный код</div>
     </div>
     <div class="card">
-      <p style="color:var(--text2);font-size:13px;margin-bottom:12px">Код дуэли (8 символов)</p>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:12px">Код (8 символов)</p>
       <input type="text" id="duelCode" maxlength="8" placeholder="Код..." style="width:100%;padding:14px;border-radius:12px;border:1px solid var(--bg3);background:var(--bg);color:var(--text);font-size:18px;text-align:center;letter-spacing:4px">
       <button class="btn btn-accent" style="margin-top:12px" onclick="joinDuel()">Присоединиться</button>
     </div>`;

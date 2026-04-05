@@ -320,10 +320,25 @@ async function apiPost(path, body) {
 
 // --- Auth ---
 
+/** Параметр запуска из Telegram (важнее, чем query — так работает ссылка t.me/bot?startapp=...) */
+function getTelegramStartParam() {
+  const p = new URLSearchParams(window.location.search);
+  const fromUrl = p.get('tgWebAppStartParam') || p.get('startapp') || '';
+  const fromTg = tg?.initDataUnsafe?.start_param != null ? String(tg.initDataUnsafe.start_param) : '';
+  return (fromTg || fromUrl || '').trim();
+}
+
+/** Реферал только число / ref_123 — не передаём duel_... в БД (referred_by BIGINT) */
+function referralForAuth(startParam) {
+  if (!startParam || startParam.startsWith('duel_')) return '';
+  if (/^\d+$/.test(startParam)) return startParam;
+  const m = /^ref_(\d+)$/.exec(startParam);
+  return m ? m[1] : '';
+}
+
 async function auth() {
   const initData = tg?.initData || '';
-  const urlParams = new URLSearchParams(window.location.search);
-  const ref = urlParams.get('ref') || urlParams.get('startapp') || '';
+  const ref = referralForAuth(getTelegramStartParam());
 
   let data;
   try {
@@ -705,12 +720,13 @@ async function loadDuels() {
   content.innerHTML = `
     <div class="play-header">
       <h2>⚔️ Дуэли</h2>
-      <div class="sub">Вызови друга — кто точнее?</div>
+      <div class="sub">Отправь другу ссылку — он сразу попадёт в дуэль, без кода.</div>
     </div>
-    <div style="display:flex;gap:10px;margin-bottom:16px">
-      <button class="btn btn-accent" style="flex:1" onclick="createDuel()">Создать дуэль</button>
-      <button class="btn btn-outline" style="flex:1" onclick="showJoinDuel()">Присоединиться</button>
-    </div>
+    <button class="btn btn-accent" style="margin-bottom:10px" onclick="createDuel()">Создать дуэль</button>
+    <p style="text-align:center;font-size:12px;color:var(--text2);margin-bottom:14px">
+      <span style="cursor:pointer;text-decoration:underline;color:var(--accent2)" onclick="showJoinDuel()" role="button">Ввести код вручную</span>
+      — если ссылка не открылась
+    </p>
     <div id="duelContent"><div class="loading"><div class="spinner"></div></div></div>`;
 
   const data = await api('/api/duels/history');
@@ -727,7 +743,7 @@ async function loadDuels() {
       else if (!d.opponent_id) status = '📨 Ждёт соперника';
       return `<div class="duel-card" onclick="openDuel(${d.id})">
         <div>⚔️</div>
-        <div class="d-vs">#${d.id} · ${d.invite_code}</div>
+        <div class="d-vs">Дуэль #${d.id}</div>
         <div class="d-result">${status}</div>
       </div>`;
     }).join('');
@@ -737,30 +753,50 @@ async function createDuel() {
   const data = await apiPost('/api/duel/create', {});
   if (!data.ok) { toast(data.error || 'Ошибка'); return; }
 
-  const link = `https://t.me/${botName || 'your_bot'}?startapp=duel_${data.invite_code}`;
+  const link = duelInviteLink(data.invite_code);
+  const linkJs = link.replace(/'/g, "\\'");
+  const mappedQ = mapDuelQuestionsForPlay(data.questions);
+  const startIdx = duelPlayStartIndex(data.questions, currentUser.telegram_id, currentUser.telegram_id);
+  const qJson = JSON.stringify(mappedQ).replace(/"/g, '&quot;');
   content.innerHTML = `
-    <div class="play-header"><h2>⚔️ Дуэль создана!</h2></div>
-    <div class="invite-code-block card">
-      <p style="color:var(--text2);font-size:13px">Код приглашения</p>
-      <div class="invite-code">${data.invite_code}</div>
-      <button class="btn btn-sm btn-outline" onclick="copyText('${data.invite_code}')">Копировать код</button>
+    <div class="play-header"><h2>⚔️ Дуэль создана!</h2>
+      <div class="sub" style="margin-top:8px">Поделись ссылкой — друг откроет приложение и сразу начнёт дуэль.</div>
     </div>
-    <button class="btn btn-accent" onclick="shareDuel('${link}')">Отправить другу</button>
-    <div style="margin-top:12px;text-align:center;color:var(--text2);font-size:13px">Теперь ответь на 5 вопросов!</div>
-    <button class="btn btn-outline" style="margin-top:12px" onclick="playDuel(${data.duel_id}, ${JSON.stringify(data.questions).replace(/"/g, '&quot;')})">Играть</button>`;
+    <div class="card" style="padding:16px;background:var(--bg2);border:1px solid rgba(162,155,254,.3);border-radius:16px;margin-bottom:12px">
+      <p style="font-size:12px;color:var(--text2);margin-bottom:8px">Ссылка-приглашение</p>
+      <p style="font-size:11px;word-break:break-all;color:var(--accent2);line-height:1.4;margin-bottom:12px">${link}</p>
+      <button class="btn btn-accent" onclick="shareDuel('${linkJs}')">📤 Отправить в Telegram</button>
+      <button class="btn btn-outline" style="margin-top:10px" onclick="copyText('${linkJs}')">📋 Скопировать ссылку</button>
+    </div>
+    <details style="margin-bottom:14px;font-size:12px;color:var(--text2)">
+      <summary style="cursor:pointer;color:var(--accent2)">Код для ручного ввода</summary>
+      <div class="invite-code-block" style="margin-top:10px">
+        <div class="invite-code" style="font-size:22px">${data.invite_code}</div>
+        <button class="btn btn-sm btn-outline" onclick="copyText('${data.invite_code}')">Копировать код</button>
+      </div>
+    </details>
+    <div style="text-align:center;color:var(--text2);font-size:13px;margin-bottom:10px">Твои ответы — нажми «Играть»</div>
+    <button class="btn btn-outline" onclick="playDuel(${data.duel_id}, ${qJson}, ${startIdx})">Играть</button>`;
+}
+
+function duelInviteLink(code) {
+  const name = (botName || 'your_bot').replace(/^@/, '');
+  return `https://t.me/${name}?startapp=duel_${code}`;
 }
 
 function shareDuel(link) {
-  const text = '⚔️ Вызываю тебя на дуэль! Кто точнее предскажет цены?';
+  const text = '⚔️ Дуэль! Нажми ссылку — откроется игра, код вводить не нужно.';
   const url = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
   window.open(url, '_blank');
 }
 
 function showJoinDuel() {
   content.innerHTML = `
-    <div class="play-header"><h2>Присоединиться</h2></div>
+    <div class="play-header"><h2>Присоединиться по коду</h2>
+      <div class="sub" style="margin-top:6px">Если друг прислал только буквы/цифры, без ссылки</div>
+    </div>
     <div class="card">
-      <p style="color:var(--text2);font-size:13px;margin-bottom:12px">Введи код дуэли</p>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:12px">Код дуэли (8 символов)</p>
       <input type="text" id="duelCode" maxlength="8" placeholder="Код..." style="width:100%;padding:14px;border-radius:12px;border:1px solid var(--bg3);background:var(--bg);color:var(--text);font-size:18px;text-align:center;letter-spacing:4px">
       <button class="btn btn-accent" style="margin-top:12px" onclick="joinDuel()">Присоединиться</button>
     </div>`;
@@ -773,7 +809,9 @@ async function joinDuel() {
   const data = await apiPost('/api/duel/join', { code });
   if (!data.ok) { toast(data.error || 'Ошибка'); return; }
 
-  playDuel(data.duel_id, data.questions);
+  const mapped = mapDuelQuestionsForPlay(data.questions);
+  const idx = duelPlayStartIndex(data.questions, currentUser.telegram_id, data.creator_id);
+  playDuel(data.duel_id, mapped, idx);
 }
 
 async function playDuel(duelId, questions, idx = 0) {
@@ -1037,21 +1075,59 @@ function showConfetti() {
 
 // --- Handle deep links (duel invites) ---
 
-function handleDeepLink() {
-  const params = new URLSearchParams(window.location.search);
-  const start = params.get('startapp') || params.get('tgWebAppStartParam') || '';
-  if (start.startsWith('duel_')) {
-    const code = start.replace('duel_', '');
-    setTimeout(async () => {
-      const data = await apiPost('/api/duel/join', { code });
-      if (data.ok) {
-        showTab('duels');
-        playDuel(data.duel_id, data.questions);
-      } else {
-        toast(data.error || 'Ошибка подключения к дуэли');
-      }
-    }, 1000);
+function mapDuelQuestionsForPlay(rows) {
+  if (!rows || !rows.length) return [];
+  return rows.map(q => {
+    const p = q.price_at_start != null ? q.price_at_start : q.price;
+    return {
+      asset: q.asset,
+      asset_label: q.asset_label || q.label,
+      asset_emoji: q.asset_emoji || q.emoji,
+      emoji: q.asset_emoji || q.emoji,
+      label: q.asset_label || q.label,
+      price_at_start: p,
+      price: p,
+    };
+  });
+}
+
+/** С какого вопроса продолжить (после обновления по той же ссылке) */
+function duelPlayStartIndex(rawQuestions, userId, creatorId) {
+  if (!rawQuestions?.length) return 0;
+  if (creatorId == null || creatorId === '') return 0;
+  const u = Number(userId);
+  const c = Number(creatorId);
+  const isCreator = u === c;
+  if (isCreator) {
+    const i = rawQuestions.findIndex(q => q.creator_answer == null);
+    return i < 0 ? rawQuestions.length : i;
   }
+  const i = rawQuestions.findIndex(q => q.opponent_answer == null);
+  return i < 0 ? rawQuestions.length : i;
+}
+
+function handleDeepLink() {
+  const start = getTelegramStartParam();
+  if (!start.startsWith('duel_')) return;
+  const code = start.slice(5);
+  if (!code) return;
+  setTimeout(async () => {
+    const data = await apiPost('/api/duel/join', { code });
+    if (data.ok) {
+      if (data.already_opponent) toast('Продолжаем дуэль');
+      showTab('duels');
+      let qs = data.questions;
+      if (!qs || !qs.length) {
+        const full = await api(`/api/duel/${data.duel_id}`);
+        if (full.ok && full.questions) qs = full.questions;
+      }
+      const mapped = mapDuelQuestionsForPlay(qs);
+      const startIdx = duelPlayStartIndex(qs, currentUser.telegram_id, data.creator_id);
+      playDuel(data.duel_id, mapped, startIdx);
+    } else {
+      toast(data.error || 'Не удалось войти в дуэль');
+    }
+  }, 350);
 }
 
 // --- Init ---

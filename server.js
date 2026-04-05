@@ -325,7 +325,14 @@ app.post('/api/duel/join', authMiddleware, async (req, res) => {
     if (!result.ok) return res.status(400).json(result);
 
     const questions = await db.getDuelQuestions(duel.id);
-    res.json({ ok: true, duel_id: duel.id, questions, resolve_after: duel.resolve_after });
+    res.json({
+      ok: true,
+      duel_id: duel.id,
+      creator_id: duel.creator_id,
+      questions,
+      resolve_after: duel.resolve_after,
+      already_opponent: !!result.already_opponent,
+    });
   } catch (e) {
     console.error('[Duel/join]', e);
     res.status(500).json({ error: 'Server error' });

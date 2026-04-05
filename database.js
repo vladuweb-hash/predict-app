@@ -828,7 +828,11 @@ async function joinDuel(duelId, userId) {
   const duel = await getDuel(duelId);
   if (!duel) return { ok: false, error: 'Duel not found' };
   if (duel.creator_id === BigInt(userId) || duel.creator_id == userId) return { ok: false, error: 'Cannot duel yourself' };
-  if (duel.opponent_id) return { ok: false, error: 'Duel already has an opponent' };
+  if (duel.opponent_id) {
+    const same = duel.opponent_id == userId || duel.opponent_id === BigInt(userId);
+    if (same) return { ok: true, already_opponent: true };
+    return { ok: false, error: 'Duel already has an opponent' };
+  }
 
   await pool.query('UPDATE duels SET opponent_id=$1 WHERE id=$2', [userId, duelId]);
   return { ok: true };

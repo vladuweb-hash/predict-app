@@ -958,7 +958,7 @@ const ACHIEVEMENT_DEFS = [
   { type: 'night_owl', emoji: '🦉', title: 'Ночная сова', desc: 'Сыграй между 00:00–05:00' },
   { type: 'veteran', emoji: '⚡', title: 'Ветеран', desc: '50 раундов сыграно' },
   { type: 'legend', emoji: '🌟', title: 'Легенда', desc: '100 раундов сыграно' },
-  { type: 'first_stars', emoji: '⭐', title: 'Звёзды', desc: 'Получи приз в Stars' },
+  { type: 'first_stars', emoji: '🎁', title: 'Подарок', desc: 'Получи Telegram Gift' },
   { type: 'streak_king', emoji: '💎', title: 'Король серий', desc: 'Серия 10× 5/5 подряд' },
 ];
 

@@ -706,8 +706,8 @@ async function loadRaffle() {
     </div>
     <div class="card raffle-prize">
       <div style="font-size:13px;color:var(--text2);margin-bottom:8px">Главный приз</div>
-      <div class="stars">${data.prizeStars}⭐</div>
-      <p style="color:var(--text2);font-size:13px;margin-top:8px">Случайный победитель получит Stars!</p>
+      <div class="stars">🎁</div>
+      <p style="color:var(--text2);font-size:13px;margin-top:8px">Случайный победитель получит Telegram Gift!</p>
     </div>
     <div class="raffle-stats">
       <div class="raffle-stat"><div class="val">${myTickets}</div><div class="lbl">Твои билеты</div></div>
@@ -786,7 +786,7 @@ async function loadProfile() {
 }
 
 function shareInvite() {
-  const text = '🎯 Предскажи курсы крипты, валют и золота — выигрывай Stars!';
+  const text = '🎯 Предскажи курсы крипты, валют и золота — выигрывай подарки!';
   const name = botName || 'your_bot';
   const link = `https://t.me/${name}?startapp=ref_${currentUser.telegram_id}`;
   const url = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;

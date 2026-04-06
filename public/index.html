@@ -888,17 +888,41 @@ async function loadDuels() {
     return;
   }
 
-  el.innerHTML = '<div style="font-size:14px;font-weight:600;margin-bottom:8px">История</div>' +
+  const staleIds = data.duels.filter(d => !d.opponent_id && !d.is_resolved && d.creator_id == currentUser.telegram_id).map(d => d.id);
+
+  el.innerHTML =
+    (staleIds.length > 1 ? `<button class="btn btn-outline" style="margin-bottom:12px;font-size:12px;padding:10px" onclick="cancelAllStaleDuels([${staleIds.join(',')}])">🗑 Удалить все без соперника (${staleIds.length})</button>` : '') +
+    '<div style="font-size:14px;font-weight:600;margin-bottom:8px">История</div>' +
     data.duels.map(d => {
       let status = '⏳ Ожидание';
       if (d.is_resolved) status = d.winner_id == currentUser.telegram_id ? '🏆 Победа' : d.is_draw ? '🤝 Ничья' : '😔 Поражение';
       else if (!d.opponent_id) status = '📨 Ждёт соперника';
-      return `<div class="duel-card" onclick="openDuel(${d.id})">
-        <div>⚔️</div>
-        <div class="d-vs">Дуэль #${d.id}</div>
-        <div class="d-result">${status}</div>
+      const canCancel = !d.opponent_id && !d.is_resolved && d.creator_id == currentUser.telegram_id;
+      return `<div class="duel-card" style="position:relative">
+        <div onclick="openDuel(${d.id})" style="display:flex;align-items:center;gap:10px;flex:1;cursor:pointer">
+          <div>⚔️</div>
+          <div class="d-vs">Дуэль #${d.id}</div>
+          <div class="d-result">${status}</div>
+        </div>
+        ${canCancel ? `<button onclick="event.stopPropagation();cancelOneDuel(${d.id})" style="background:none;border:none;color:var(--red);font-size:18px;padding:6px 10px;cursor:pointer;flex-shrink:0" title="Удалить">✕</button>` : ''}
       </div>`;
     }).join('');
+}
+
+async function cancelOneDuel(id) {
+  const r = await apiPost('/api/duel/cancel', { duelId: id });
+  if (r.ok) { toast('Дуэль удалена'); loadDuels(); }
+  else toast(r.error || 'Ошибка');
+}
+
+async function cancelAllStaleDuels(ids) {
+  let ok = 0;
+  for (const id of ids) {
+    const r = await apiPost('/api/duel/cancel', { duelId: id });
+    if (r.ok) ok++;
+  }
+  toast(`Удалено: ${ok}`);
+  loadDuels();
 }
 
 async function createDuel() {

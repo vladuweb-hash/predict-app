@@ -981,6 +981,30 @@ async function getUserDuels(userId, limit = 10) {
   return rows;
 }
 
+async function cancelDuel(duelId, userId) {
+  const duel = await getDuel(duelId);
+  if (!duel) return { ok: false, error: 'Duel not found' };
+  if (duel.creator_id != userId) return { ok: false, error: 'Only creator can cancel' };
+  if (duel.opponent_id) return { ok: false, error: 'Opponent already joined' };
+  if (duel.is_resolved) return { ok: false, error: 'Already resolved' };
+  await pool.query('DELETE FROM duel_questions WHERE duel_id=$1', [duelId]);
+  await pool.query('DELETE FROM duels WHERE id=$1', [duelId]);
+  return { ok: true };
+}
+
+async function cleanupStaleDuels() {
+  const { rowCount } = await pool.query(
+    `DELETE FROM duel_questions WHERE duel_id IN (
+       SELECT id FROM duels WHERE opponent_id IS NULL AND started_at < NOW() - INTERVAL '24 hours'
+     )`
+  );
+  const { rowCount: duelCount } = await pool.query(
+    `DELETE FROM duels WHERE opponent_id IS NULL AND started_at < NOW() - INTERVAL '24 hours'`
+  );
+  if (duelCount > 0) console.log(`[Cleanup] Removed ${duelCount} stale duels`);
+  return duelCount;
+}
+
 // --- Duel matchmaking (случайный соперник, без кода) ---
 
 async function cancelDuelMatchmaking(userId) {
@@ -1272,7 +1296,7 @@ module.exports = {
   canStartRound, createRound, getRound, getRoundQuestions, getActiveRound,
   answerRoundQuestion, resolveRound, getPendingRounds, getPendingRoundsForUser, getRecentRounds,
   generateInviteCode, canCreateDuel, createDuel, getDuel, getDuelByCode,
-  getDuelQuestions, joinDuel, answerDuelQuestion, resolveDuel, getPendingDuels, getUserDuels,
+  getDuelQuestions, joinDuel, answerDuelQuestion, resolveDuel, getPendingDuels, getUserDuels, cancelDuel, cleanupStaleDuels,
   tryDuelMatchmaking, pollDuelMatchmaking, cancelDuelMatchmaking,
   addRaffleTicket, getRaffleTickets, getUserTickets, getRaffle, drawRaffle,
   getAchievements, grantAchievement, checkAchievements, getLeaderboard, getLeaderboardRank, getUsersCount, computeLeaderboardRating, LB_ROUND_CAP,

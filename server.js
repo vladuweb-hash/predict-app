@@ -370,6 +370,17 @@ app.post('/api/duel/matchmaking/cancel', authMiddleware, async (req, res) => {
   }
 });
 
+app.post('/api/duel/cancel', authMiddleware, async (req, res) => {
+  try {
+    const { duelId } = req.body;
+    const result = await db.cancelDuel(duelId, req.tgUser.id);
+    res.json(result);
+  } catch (e) {
+    console.error('[Duel/cancel]', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 app.post('/api/duel/join', authMiddleware, async (req, res) => {
   try {
     const { code } = req.body;

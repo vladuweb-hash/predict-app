@@ -177,7 +177,8 @@ function start() {
 
   setInterval(async () => {
     await weeklyRaffleCheck();
-  }, 3600000); // hourly check for raffle
+    try { await db.cleanupStaleDuels(); } catch (e) { console.error('[Scheduler] cleanupStaleDuels:', e.message); }
+  }, 3600000); // hourly check for raffle + stale duels
 
   setTimeout(async () => {
     await resolveRounds();

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Топ игроков — Предскажи</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0f0f14;--bg2:#1a1a24;--bg3:#24243a;--card:#1e1e2e;
+  --text:#e8e8f0;--text2:#8888aa;--accent:#6c5ce7;--accent2:#a29bfe;--gold:#ffd700;
+}
+html,body{min-height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text)}
+.wrap{max-width:480px;margin:0 auto;padding:20px 16px 32px}
+h1{font-size:22px;margin-bottom:6px}
+.sub{font-size:13px;color:var(--text2);line-height:1.45;margin-bottom:16px}
+.note{font-size:12px;color:var(--text2);padding:12px 14px;background:var(--card);border-radius:12px;border:1px solid var(--bg3);margin-bottom:14px}
+.lb-list{display:flex;flex-direction:column;gap:8px}
+.lb-row{display:flex;flex-direction:column;gap:6px;padding:12px 14px;background:var(--card);border-radius:12px;border:1px solid var(--bg3)}
+.lb-row-head{display:flex;align-items:center;gap:8px;width:100%;min-width:0}
+.lb-rank{font-size:20px;min-width:36px;text-align:center;line-height:1.15;flex-shrink:0}
+.lb-name-wrap{flex:1;min-width:0}
+.lb-name{font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lb-sub{font-size:11px;color:var(--text2);line-height:1.35}
+.lb-pts{flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;padding:4px 10px;border-radius:10px;background:rgba(255,215,0,.12);border:1px solid rgba(255,215,0,.35)}
+.lb-pts-num{font-size:17px;font-weight:800;color:var(--gold)}
+.lb-pts-lbl{font-size:9px;font-weight:700;color:var(--text2);text-transform:uppercase;margin-top:2px}
+.err,.loading{text-align:center;padding:40px 16px;color:var(--text2)}
+.spinner{display:inline-block;width:28px;height:28px;border:3px solid var(--bg3);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🏆 Топ игроков</h1>
+  <p class="sub">Рейтинг в очках: <strong>140×</strong> идеальных раундов (5/5) + <strong>35×</strong> лучшая серия 5/5 подряд + <strong>25×</strong> победы в дуэлях + сыгранные раунды (до <strong>250</strong> в зачёт). В таблице — топ-50.</p>
+  <div id="root"><div class="loading"><div class="spinner"></div><p style="margin-top:14px">Загрузка…</p></div></div>
+</div>
+<script>
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str == null ? '' : String(str);
+  return d.innerHTML;
+}
+function coalescePts(row) {
+  if (row && row.rating != null && row.rating !== '') {
+    const n = Number(row.rating);
+    if (Number.isFinite(n)) return n;
+  }
+  const t5 = Number(row?.total_5of5) || 0, bs = Number(row?.best_streak) || 0;
+  const dw = Number(row?.duel_wins) || 0, tr = Number(row?.total_rounds) || 0;
+  return t5 * 140 + bs * 35 + dw * 25 + Math.min(tr, 250);
+}
+async function load() {
+  const root = document.getElementById('root');
+  try {
+    const res = await fetch('/api/leaderboard');
+    const data = await res.json();
+    if (!data.ok) { root.innerHTML = '<p class="err">Не удалось загрузить рейтинг.</p>'; return; }
+
+    const medal = (r) => (r === 1 ? '🥇' : r === 2 ? '🥈' : r === 3 ? '🥉' : String(r));
+    const rows = (data.board || []).map((row) => `
+      <div class="lb-row">
+        <div class="lb-row-head">
+          <div class="lb-rank">${medal(row.rank)}</div>
+          <div class="lb-name-wrap"><div class="lb-name">${escapeHtml(row.name)}</div></div>
+          <div class="lb-pts"><span class="lb-pts-num">${coalescePts(row)}</span><span class="lb-pts-lbl">очки</span></div>
+        </div>
+        <div class="lb-sub">${row.total_5of5} идеал. · серия ${row.best_streak} · ${row.duel_wins} побед · ${row.total_rounds} раундов</div>
+      </div>`).join('');
+
+    root.innerHTML = `
+      <div class="note">Игроков: <strong style="color:var(--text)">${data.totalPlayers ?? '—'}</strong>. Откройте приложение через бота, чтобы увидеть своё место и соревноваться.</div>
+      <div class="lb-list">${rows || '<p class="sub" style="text-align:center;padding:24px;color:var(--text2)">Пока нет данных</p>'}</div>`;
+  } catch (e) {
+    root.innerHTML = '<p class="err">Ошибка сети.</p>';
+  }
+}
+load();
+</script>
+</body>
+</html>

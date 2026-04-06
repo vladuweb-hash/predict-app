@@ -17,13 +17,16 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
 a{color:var(--accent2);text-decoration:none}
 
 .app{display:flex;flex-direction:column;min-height:100vh}
-.content{flex:1;padding:16px;padding-bottom:80px;overflow-y:auto}
+.rating-strip{font-size:12px;text-align:center;padding:9px 12px 8px;background:linear-gradient(90deg,rgba(255,215,0,.18),rgba(108,92,231,.15));border-bottom:1px solid var(--bg3);color:var(--text);flex-shrink:0}
+.rating-strip strong{color:var(--gold);font-size:15px;font-weight:800}
+.content{flex:1;padding:16px;padding-bottom:80px;overflow-y:auto;min-height:0}
 
 /* Bottom nav */
 .nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--bg2);border-top:1px solid var(--bg3);z-index:100;padding-bottom:env(safe-area-inset-bottom)}
-.nav-btn{flex:1;text-align:center;padding:10px 4px;font-size:11px;color:var(--text2);cursor:pointer;transition:.2s}
+.nav-btn{flex:1;text-align:center;padding:9px 2px;font-size:10px;color:var(--text2);cursor:pointer;transition:.2s}
 .nav-btn.active{color:var(--accent2)}
-.nav-btn .icon{font-size:22px;display:block;margin-bottom:2px}
+.nav-btn .icon{font-size:20px;display:block;margin-bottom:2px}
+.nav-build{text-align:center;font-size:9px;color:var(--text2);opacity:.75;padding:0 8px 6px;padding-bottom:calc(6px + env(safe-area-inset-bottom));line-height:1.2}
 
 /* Cards */
 .card{background:var(--card);border-radius:16px;padding:20px;margin-bottom:12px}
@@ -199,6 +202,22 @@ a{color:var(--accent2);text-decoration:none}
 .toast{position:fixed;top:20px;left:50%;transform:translateX(-50%) translateY(-100px);background:var(--card);border:1px solid var(--bg3);padding:12px 20px;border-radius:12px;font-size:14px;z-index:400;transition:.3s;box-shadow:0 8px 24px rgba(0,0,0,.3)}
 .toast.show{transform:translateX(-50%) translateY(0)}
 
+/* Leaderboard */
+.lb-list{display:flex;flex-direction:column;gap:8px}
+.lb-row{display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:12px 14px;background:var(--card);border-radius:12px;border:1px solid var(--bg3)}
+.lb-row.lb-me{border-color:var(--accent);background:linear-gradient(135deg,rgba(108,92,231,.14),var(--card))}
+.lb-row-head{display:flex;align-items:center;gap:8px;width:100%;min-width:0}
+.lb-rank{font-size:20px;min-width:36px;text-align:center;line-height:1.15;flex-shrink:0}
+.lb-name-wrap{flex:1;min-width:0}
+.lb-name{font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lb-sub{font-size:11px;color:var(--text2);line-height:1.35;padding-right:2px}
+.lb-pts{flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;line-height:1.05;padding:4px 10px;border-radius:10px;background:rgba(255,215,0,.12);border:1px solid rgba(255,215,0,.35)}
+.lb-pts-num{font-size:17px;font-weight:800;color:var(--gold)}
+.lb-pts-lbl{font-size:9px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-top:2px}
+.lb-you{border-radius:14px;padding:14px 16px;margin-bottom:12px}
+.lb-you.in{border:1px solid var(--accent);background:rgba(108,92,231,.1)}
+.lb-you.out{border:1px dashed var(--bg3)}
+
 /* Scrollbar */
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -207,15 +226,18 @@ a{color:var(--accent2);text-decoration:none}
 </head>
 <body>
 <div class="app">
+  <div id="ratingStrip" class="rating-strip" style="display:none" role="status" aria-live="polite"></div>
   <div class="content" id="content">
     <div class="loading"><div class="spinner"></div><p style="margin-top:12px">Загрузка...</p></div>
   </div>
   <div class="nav">
     <div class="nav-btn active" onclick="showTab('play')"><span class="icon">🎯</span>Играть</div>
+    <div class="nav-btn" onclick="showTab('top')"><span class="icon">🏆</span>Топ</div>
     <div class="nav-btn" onclick="showTab('duels')"><span class="icon">⚔️</span>Дуэли</div>
     <div class="nav-btn" onclick="showTab('raffle')"><span class="icon">🎫</span>Приз</div>
     <div class="nav-btn" onclick="showTab('profile')"><span class="icon">👤</span>Профиль</div>
   </div>
+  <div id="buildMarker" class="nav-build" title="Если не совпадает с версией на сервере — открой приложение заново из бота">сборка 2.1.0</div>
 </div>
 <div class="toast" id="toast"></div>
 <div class="popup-overlay" id="premiumPopup">
@@ -239,6 +261,16 @@ let currentQuestionIdx = 0;
 let sparklineCache = {};
 let timerInterval = null;
 let livePriceInterval = null;
+let matchmakingPollTimer = null;
+let duelsMatchmakingActive = false;
+
+function stopMatchmakingPoll() {
+  if (matchmakingPollTimer) {
+    clearInterval(matchmakingPollTimer);
+    matchmakingPollTimer = null;
+  }
+  duelsMatchmakingActive = false;
+}
 
 function stopLivePriceUpdates() {
   if (livePriceInterval) {
@@ -307,6 +339,52 @@ function toast(msg) {
   setTimeout(() => t.classList.remove('show'), 3000);
 }
 
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str == null ? '' : String(str);
+  return d.innerHTML;
+}
+
+/** Веса как в database.js computeLeaderboardRating */
+const LB_ROUND_CAP_CLIENT = 250;
+
+function coalesceLeaderboardRating(row) {
+  if (row && row.rating != null && row.rating !== '') {
+    const n = Number(row.rating);
+    if (Number.isFinite(n)) return n;
+  }
+  const t5 = Number(row?.total_5of5) || 0;
+  const bs = Number(row?.best_streak) || 0;
+  const dw = Number(row?.duel_wins) || 0;
+  const tr = Number(row?.total_rounds) || 0;
+  return t5 * 140 + bs * 35 + dw * 25 + Math.min(tr, LB_ROUND_CAP_CLIENT);
+}
+
+function updateRatingStrip(src) {
+  const el = document.getElementById('ratingStrip');
+  if (!el) return;
+  let r = src && src.rating;
+  const rk = src && src.leaderboardRank;
+  const tp = src && src.totalPlayers;
+  if ((r == null || r === '') && currentUser) {
+    r = coalesceLeaderboardRating({
+      total_5of5: currentUser.total_5of5,
+      best_streak: currentUser.best_streak,
+      duel_wins: currentUser.duel_wins,
+      total_rounds: currentUser.total_rounds,
+    });
+  }
+  const n = Number(r);
+  if (!Number.isFinite(n)) {
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = 'block';
+  el.innerHTML = '🏆 <strong>' + n + '</strong> очков рейтинга' +
+    (rk != null ? ' · место <strong>#' + rk + '</strong>' : '') +
+    (tp != null ? ' <span style="opacity:.85;font-size:11px">из ' + tp + '</span>' : '');
+}
+
 async function api(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (tg?.initData) headers['X-Telegram-Init-Data'] = tg.initData;
@@ -351,20 +429,30 @@ async function auth() {
 
   currentUser = data.user;
   botName = data.botUsername || '';
+  updateRatingStrip({
+    rating: data.rating,
+    leaderboardRank: data.leaderboardRank,
+    totalPlayers: data.totalPlayers,
+  });
   showTab('play');
 }
 
 // --- Tabs ---
 
 function showTab(tab) {
+  if (currentTab === 'duels' && tab !== 'duels') {
+    stopMatchmakingPoll();
+    apiPost('/api/duel/matchmaking/cancel', {}).catch(() => {});
+  }
   currentTab = tab;
   document.querySelectorAll('.nav-btn').forEach((b, i) => {
-    b.classList.toggle('active', ['play','duels','raffle','profile'][i] === tab);
+    b.classList.toggle('active', ['play','top','duels','raffle','profile'][i] === tab);
   });
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   stopLivePriceUpdates();
 
   if (tab === 'play') loadPlay();
+  else if (tab === 'top') loadLeaderboard();
   else if (tab === 'duels') loadDuels();
   else if (tab === 'raffle') loadRaffle();
   else if (tab === 'profile') loadProfile();
@@ -438,6 +526,10 @@ function renderStartScreen() {
     </div>
     <div class="card-sm" style="text-align:center">
       <p style="font-size:13px;color:var(--text2)">🎫 5/5 = билет в розыгрыш 500⭐ + Premium 3 дня</p>
+    </div>
+    <div class="card-sm" style="text-align:center;cursor:pointer" onclick="showTab('top')" role="button">
+      <span style="font-size:14px;font-weight:600">🏆 Топ игроков</span>
+      <p style="font-size:12px;color:var(--text2);margin-top:4px">Соревнуйся за первые места</p>
     </div>`;
 }
 
@@ -716,16 +808,77 @@ async function loadChart(assetId) {
 
 // --- DUELS ---
 
+function enterMatchedDuel(data) {
+  if (!data.questions?.length) return toast('Нет вопросов дуэли');
+  const mapped = mapDuelQuestionsForPlay(data.questions);
+  const idx = duelPlayStartIndex(data.questions, currentUser.telegram_id, data.creator_id);
+  playDuel(data.duel_id, mapped, idx);
+}
+
+function renderMatchmakingWait() {
+  content.innerHTML = `
+    <div class="play-header">
+      <h2>🎲 Ищем соперника</h2>
+      <div class="sub">Как только кто-то ещё нажмёт поиск — вы попадёте в одну дуэль. Код не нужен.</div>
+    </div>
+    <div class="card" style="text-align:center;padding:32px 20px">
+      <div class="spinner" style="margin:0 auto 16px"></div>
+      <p style="color:var(--text2);font-size:14px">Подожди немного или отмени поиск.</p>
+      <button type="button" class="btn btn-outline" style="margin-top:20px" onclick="cancelRandomDuelSearch()">Отменить поиск</button>
+    </div>`;
+}
+
+async function cancelRandomDuelSearch() {
+  stopMatchmakingPoll();
+  try { await apiPost('/api/duel/matchmaking/cancel', {}); } catch (e) { /* noop */ }
+  loadDuels();
+}
+
+async function startRandomDuelMatch() {
+  stopMatchmakingPoll();
+  duelsMatchmakingActive = true;
+  const data = await apiPost('/api/duel/matchmaking/join', {});
+  if (!data.ok) {
+    duelsMatchmakingActive = false;
+    toast(data.error || 'Не удалось начать поиск');
+    return;
+  }
+  if (data.matched) {
+    duelsMatchmakingActive = false;
+    toast('Соперник найден!');
+    enterMatchedDuel(data);
+    return;
+  }
+  if (data.waiting) {
+    renderMatchmakingWait();
+    matchmakingPollTimer = setInterval(async () => {
+      if (!duelsMatchmakingActive) return;
+      try {
+        const p = await api('/api/duel/matchmaking/poll');
+        if (!p.ok) return;
+        if (p.matched) {
+          stopMatchmakingPoll();
+          toast('Соперник найден!');
+          enterMatchedDuel(p);
+        } else if (!p.waiting && duelsMatchmakingActive) {
+          stopMatchmakingPoll();
+          toast('Поиск прерван');
+          loadDuels();
+        }
+      } catch (e) { /* тихо */ }
+    }, 2200);
+  }
+}
+
 async function loadDuels() {
   content.innerHTML = `
     <div class="play-header">
       <h2>⚔️ Дуэли</h2>
-      <div class="sub">Сразись с другом на одних и тех же активах.</div>
+      <div class="sub">Одинаковые активы — кто угадает точнее. С друзьями: отправь ссылку из «Создать дуэль» — <strong>вводить код не нужно</strong>, друг просто открывает ссылку.</div>
     </div>
-    <button class="btn btn-accent" style="margin-bottom:10px" onclick="createDuel()">Создать дуэль</button>
-    <p style="text-align:center;font-size:12px;color:var(--text2);margin-bottom:14px">
-      <span style="cursor:pointer;text-decoration:underline;color:var(--accent2)" onclick="showJoinDuel()" role="button">У меня есть приглашение</span>
-    </p>
+    <button class="btn btn-accent" style="margin-bottom:10px" onclick="createDuel()">Создать дуэль (пригласить по ссылке)</button>
+    <button class="btn btn-outline" style="margin-bottom:10px" onclick="startRandomDuelMatch()">🎲 Случайный соперник</button>
+    <p style="text-align:center;font-size:11px;color:var(--text2);margin-bottom:14px;line-height:1.4">Случайный соперник — общая очередь: когда в сети появится второй игрок, дуэль начнётся сама.</p>
     <div id="duelContent"><div class="loading"><div class="spinner"></div></div></div>`;
 
   const data = await api('/api/duels/history');
@@ -759,21 +912,14 @@ async function createDuel() {
   const qJson = JSON.stringify(mappedQ).replace(/"/g, '&quot;');
   content.innerHTML = `
     <div class="play-header"><h2>⚔️ Дуэль создана!</h2>
-      <div class="sub" style="margin-top:8px">Отправь приглашение другу.</div>
+      <div class="sub" style="margin-top:8px">Друг открывает ссылку в Telegram — приложение само подключит его к дуэли. <strong>Код вводить не нужно.</strong></div>
     </div>
     <div class="card" style="padding:16px;background:var(--bg2);border:1px solid rgba(162,155,254,.3);border-radius:16px;margin-bottom:12px">
-      <p style="font-size:12px;color:var(--text2);margin-bottom:8px">Приглашение</p>
+      <p style="font-size:12px;color:var(--text2);margin-bottom:8px">Ссылка-приглашение</p>
       <p style="font-size:11px;word-break:break-all;color:var(--accent2);line-height:1.4;margin-bottom:12px">${link}</p>
       <button class="btn btn-accent" onclick="shareDuel('${linkJs}')">📤 Отправить в Telegram</button>
       <button class="btn btn-outline" style="margin-top:10px" onclick="copyText('${linkJs}')">📋 Скопировать ссылку</button>
     </div>
-    <details style="margin-bottom:14px;font-size:12px;color:var(--text2)">
-      <summary style="cursor:pointer;color:var(--accent2)">Показать код приглашения</summary>
-      <div class="invite-code-block" style="margin-top:10px">
-        <div class="invite-code" style="font-size:22px">${data.invite_code}</div>
-        <button class="btn btn-sm btn-outline" onclick="copyText('${data.invite_code}')">Копировать код</button>
-      </div>
-    </details>
     <div style="text-align:center;color:var(--text2);font-size:13px;margin-bottom:10px">Твои ответы — нажми «Играть»</div>
     <button class="btn btn-outline" onclick="playDuel(${data.duel_id}, ${qJson}, ${startIdx})">Играть</button>`;
 }
@@ -787,30 +933,6 @@ function shareDuel(link) {
   const text = '⚔️ Вызываю тебя на дуэль! Кто точнее угадает движение цен?';
   const url = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
   window.open(url, '_blank');
-}
-
-function showJoinDuel() {
-  content.innerHTML = `
-    <div class="play-header"><h2>Присоединиться</h2>
-      <div class="sub" style="margin-top:6px">Введи пригласительный код</div>
-    </div>
-    <div class="card">
-      <p style="color:var(--text2);font-size:13px;margin-bottom:12px">Код (8 символов)</p>
-      <input type="text" id="duelCode" maxlength="8" placeholder="Код..." style="width:100%;padding:14px;border-radius:12px;border:1px solid var(--bg3);background:var(--bg);color:var(--text);font-size:18px;text-align:center;letter-spacing:4px">
-      <button class="btn btn-accent" style="margin-top:12px" onclick="joinDuel()">Присоединиться</button>
-    </div>`;
-}
-
-async function joinDuel() {
-  const code = document.getElementById('duelCode')?.value?.trim();
-  if (!code) return toast('Введи код');
-
-  const data = await apiPost('/api/duel/join', { code });
-  if (!data.ok) { toast(data.error || 'Ошибка'); return; }
-
-  const mapped = mapDuelQuestionsForPlay(data.questions);
-  const idx = duelPlayStartIndex(data.questions, currentUser.telegram_id, data.creator_id);
-  playDuel(data.duel_id, mapped, idx);
 }
 
 async function playDuel(duelId, questions, idx = 0) {
@@ -889,6 +1011,66 @@ async function openDuel(duelId) {
         <p>Дуэль в процессе. Ожидание результатов...</p>
         <button class="btn btn-outline" style="margin-top:16px" onclick="showTab('duels')">Назад</button>
       </div>`;
+  }
+}
+
+// --- LEADERBOARD ---
+
+async function loadLeaderboard() {
+  content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+  const data = await api('/api/leaderboard');
+  if (!data.ok) { content.innerHTML = '<div class="card">Ошибка загрузки</div>'; return; }
+
+  const medal = (r) => (r === 1 ? '🥇' : r === 2 ? '🥈' : r === 3 ? '🥉' : String(r));
+
+  const rows = (data.board || []).map((row) => {
+    const pts = coalesceLeaderboardRating(row);
+    return `
+    <div class="lb-row${row.isMe ? ' lb-me' : ''}" role="listitem">
+      <div class="lb-row-head">
+        <div class="lb-rank">${medal(row.rank)}</div>
+        <div class="lb-name-wrap">
+          <div class="lb-name">${escapeHtml(row.name)}</div>
+        </div>
+        <div class="lb-pts"><span class="lb-pts-num">${pts}</span><span class="lb-pts-lbl">очки</span></div>
+      </div>
+      <div class="lb-sub">${row.total_5of5} идеал. · серия ${row.best_streak} · ${row.duel_wins} побед · ${row.total_rounds} раундов</div>
+    </div>`;
+  }).join('');
+
+  const formula = data.ratingFormula;
+  const formulaLine = formula
+    ? `<div style="font-size:11px;color:var(--text2);line-height:1.45;margin-top:8px">${formula.note}</div>`
+    : '';
+
+  const rankNote = data.yourRank != null
+    ? `<div class="card lb-you ${data.inTop ? 'in' : 'out'}">
+         <div style="font-size:15px;font-weight:600">Твоё место: #${data.yourRank} <span style="color:var(--text2);font-weight:400">из ${data.totalPlayers || '—'}</span></div>
+         ${data.yourRating != null ? `<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:rgba(255,215,0,.12);border:1px solid rgba(255,215,0,.35)"><span style="font-size:22px;font-weight:800;color:var(--gold)">${data.yourRating}</span> <span style="font-size:12px;font-weight:600;color:var(--text2)">твои очки рейтинга</span></div>` : ''}
+         ${!data.inTop ? '<div style="font-size:12px;color:var(--text2);margin-top:6px">В списке ниже — только топ-50</div>' : ''}
+       </div>`
+    : '';
+
+  content.innerHTML = `
+    <div class="play-header">
+      <h2>🏆 Топ игроков</h2>
+      <div class="sub">Соревновательный рейтинг в очках: чем выше сумма — тем выше место. Идеальные раунды дают больше всего, дуэли и активность добавляют очки.</div>
+      ${formulaLine}
+    </div>
+    ${rankNote}
+    <div class="card" style="padding:12px 14px;margin-bottom:12px">
+      <div style="font-size:13px;color:var(--text2)">Игроков в базе: <strong style="color:var(--text)">${data.totalPlayers ?? '—'}</strong></div>
+    </div>
+    <div class="lb-list" role="list">${rows || '<p class="sub" style="text-align:center;padding:20px">Пока пусто — будь первым!</p>'}</div>
+    <button type="button" class="btn btn-outline" style="margin-top:12px" onclick="loadLeaderboard()">🔄 Обновить</button>`;
+
+  if (data.yourRating != null || data.yourRank != null) {
+    updateRatingStrip({
+      rating: data.yourRating,
+      leaderboardRank: data.yourRank,
+      totalPlayers: data.totalPlayers,
+    });
   }
 }
 
@@ -977,6 +1159,14 @@ async function loadProfile() {
       ${premium ? '<div class="premium-badge">⭐ PREMIUM</div>' : ''}
     </div>
 
+    <div class="card" style="text-align:center;padding:16px;margin-bottom:12px;border:1px solid rgba(255,215,0,.35);background:rgba(255,215,0,.08)">
+      <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Рейтинг (очки)</div>
+      <div style="font-size:28px;font-weight:800;color:var(--gold)">${data.rating != null && data.rating !== '' ? data.rating : coalesceLeaderboardRating(u)}</div>
+      ${data.leaderboardRank != null ? `<div style="font-size:13px;color:var(--text2);margin-top:8px">Место в общем топе: <strong style="color:var(--text)">#${data.leaderboardRank}</strong>${data.totalPlayers != null ? ` из ${data.totalPlayers}` : ''}</div>` : ''}
+      <div style="font-size:11px;color:var(--text2);margin-top:8px;line-height:1.35">Считается как в вкладке «Топ»: 5/5, серия, дуэли, раунды (до 250 в зачёт).</div>
+      <button type="button" class="btn btn-outline" style="margin-top:12px" onclick="showTab('top')">🏆 Таблица топ-50</button>
+    </div>
+
     <div class="stats-grid">
       <div class="stat-item"><div class="val">${u.total_rounds || 0}</div><div class="lbl">Раундов</div></div>
       <div class="stat-item"><div class="val">${u.total_5of5 || 0}</div><div class="lbl">5/5</div></div>
@@ -991,12 +1181,19 @@ async function loadProfile() {
     <div class="achievements-title">Достижения (${data.achievements?.length || 0}/${(data.achievementDefs || []).length})</div>
     <div class="ach-grid">${achHtml}</div>
 
+    <div class="sub" style="margin-top:16px;text-align:center;opacity:0.9">За друга, который доиграет первый раунд по твоей ссылке, ты получишь +1 билет в розыгрыш недели.</div>
     <button class="btn btn-outline" style="margin-top:20px" onclick="shareInvite()">📨 Пригласить друга</button>
     <button class="btn btn-outline" style="margin-top:8px" onclick="showTab('play')">🎯 Играть</button>`;
+
+  updateRatingStrip({
+    rating: data.rating,
+    leaderboardRank: data.leaderboardRank,
+    totalPlayers: data.totalPlayers,
+  });
 }
 
 function shareInvite() {
-  const text = '🎯 Предскажи курсы крипты, валют и золота — выигрывай подарки!';
+  const text = '🎯 Предскажи курсы крипты, валют и золота — выигрывай подарки! За первый раунд друга — +1 билет тебе в розыгрыш.';
   const name = botName || 'your_bot';
   const link = `https://t.me/${name}?startapp=ref_${currentUser.telegram_id}`;
   const url = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
@@ -1131,8 +1328,14 @@ function handleDeepLink() {
 
 // --- Init ---
 
-auth().then(() => {
+auth().then(async () => {
   handleDeepLink();
+  try {
+    const r = await fetch('/api/build');
+    const b = await r.json();
+    const el = document.getElementById('buildMarker');
+    if (el && b.ok) el.textContent = 'клиент 2.1.0 · сервер v' + b.version;
+  } catch (e) { /* старый сервер без /api/build */ }
 });
 </script>
 </body>

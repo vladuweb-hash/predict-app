@@ -150,6 +150,17 @@ async function initDB() {
       unlocked_at TIMESTAMPTZ DEFAULT NOW(),
       UNIQUE(user_id, type)
     );
+
+    CREATE TABLE IF NOT EXISTS duel_queue (
+      user_id BIGINT PRIMARY KEY,
+      queued_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS duel_match_notify (
+      user_id BIGINT PRIMARY KEY,
+      duel_id INTEGER NOT NULL REFERENCES duels(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
   `);
 
   // Add missing columns to users table (for existing DBs created before v3)
@@ -167,6 +178,7 @@ async function initDB() {
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS notifications BOOLEAN DEFAULT true',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS chat_id BIGINT',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by BIGINT',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS referrer_reward_given BOOLEAN DEFAULT false',
   ];
   for (const q of alterQueries) {
     try { await pool.query(q); } catch (e) { /* column already exists */ }
@@ -659,6 +671,25 @@ async function answerRoundQuestion(roundId, questionIndex, answer) {
   return { ok: true, answered, total: totalQuestions, is_complete: isComplete };
 }
 
+/** Первый завершённый раунд приглашённого → +1 билет пригласившему (один раз). */
+async function maybeGrantReferrerRaffleTicket(invitee) {
+  const tid = invitee.telegram_id;
+  const rounds = invitee.total_rounds;
+  if (rounds !== 1) return null;
+  if (!invitee.referred_by || invitee.referrer_reward_given) return null;
+  let refId = invitee.referred_by;
+  if (typeof refId === 'string') refId = parseInt(refId, 10);
+  if (!refId || refId === Number(tid)) return null;
+  const referrer = await getUser(refId);
+  if (!referrer) return null;
+  const weekKey = getWeekKey();
+  await addRaffleTicket(refId, weekKey, 'referral');
+  await pool.query('UPDATE users SET referrer_reward_given=true WHERE telegram_id=$1', [tid]);
+  invitee.referrer_reward_given = true;
+  console.log(`[Referral] +1 ticket for referrer ${refId} (invitee ${tid})`);
+  return refId;
+}
+
 async function resolveRound(roundId) {
   const round = await getRound(roundId);
   if (!round || round.is_resolved) return null;
@@ -697,8 +728,10 @@ async function resolveRound(roundId) {
   );
 
   const user = await getUser(round.user_id);
+  let referralTicketForReferrerId = null;
   if (user) {
     user.total_rounds = (user.total_rounds || 0) + 1;
+    referralTicketForReferrerId = await maybeGrantReferrerRaffleTicket(user);
 
     if (correctCount === 5) {
       user.streak_5of5 = (user.streak_5of5 || 0) + 1;
@@ -722,14 +755,14 @@ async function resolveRound(roundId) {
         premiumGranted = true;
       }
       await saveUser(user);
-      return { roundId, correctCount, is5of5: true, premiumGranted, streak: user.streak_5of5, user };
+      return { roundId, correctCount, is5of5: true, premiumGranted, streak: user.streak_5of5, user, referralTicketForReferrerId };
     } else {
       user.streak_5of5 = 0;
       await saveUser(user);
     }
   }
 
-  return { roundId, correctCount, is5of5: false, premiumGranted: false, streak: 0, user };
+  return { roundId, correctCount, is5of5: false, premiumGranted: false, streak: 0, user, referralTicketForReferrerId };
 }
 
 async function getPendingRounds() {
@@ -948,6 +981,112 @@ async function getUserDuels(userId, limit = 10) {
   return rows;
 }
 
+// --- Duel matchmaking (случайный соперник, без кода) ---
+
+async function cancelDuelMatchmaking(userId) {
+  await pool.query('DELETE FROM duel_queue WHERE user_id=$1', [userId]);
+  await pool.query('DELETE FROM duel_match_notify WHERE user_id=$1', [userId]);
+  return { ok: true };
+}
+
+async function pollDuelMatchmaking(userId) {
+  const { rows: n } = await pool.query('SELECT duel_id FROM duel_match_notify WHERE user_id=$1', [userId]);
+  if (n.length > 0) {
+    const duelId = n[0].duel_id;
+    await pool.query('DELETE FROM duel_match_notify WHERE user_id=$1', [userId]);
+    const duel = await getDuel(duelId);
+    if (!duel) return { ok: true, matched: false, waiting: false };
+    const questions = await getDuelQuestions(duelId);
+    return {
+      ok: true,
+      matched: true,
+      waiting: false,
+      duel_id: duelId,
+      creator_id: duel.creator_id,
+      questions,
+      resolve_after: duel.resolve_after,
+      you_are: 'creator',
+    };
+  }
+  const { rows: q } = await pool.query('SELECT 1 FROM duel_queue WHERE user_id=$1', [userId]);
+  return { ok: true, matched: false, waiting: q.length > 0 };
+}
+
+async function tryDuelMatchmaking(userId) {
+  const myCan = await canCreateDuel(userId);
+  if (!myCan.ok) return myCan;
+
+  const client = await pool.connect();
+  let partnerId = null;
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM duel_match_notify WHERE user_id=$1', [userId]);
+    await client.query('DELETE FROM duel_queue WHERE user_id=$1', [userId]);
+
+    const { rows } = await client.query(
+      `SELECT user_id FROM duel_queue WHERE user_id <> $1 ORDER BY queued_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED`,
+      [userId]
+    );
+
+    if (rows.length === 0) {
+      await client.query(
+        'INSERT INTO duel_queue (user_id) VALUES ($1) ON CONFLICT (user_id) DO UPDATE SET queued_at = NOW()',
+        [userId]
+      );
+      await client.query('COMMIT');
+      return { ok: true, waiting: true, matched: false };
+    }
+
+    partnerId = rows[0].user_id;
+    await client.query('DELETE FROM duel_queue WHERE user_id=$1', [partnerId]);
+    await client.query('COMMIT');
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* noop */ }
+    throw e;
+  } finally {
+    client.release();
+  }
+
+  const partnerCan = await canCreateDuel(partnerId);
+  if (!partnerCan.ok) {
+    await pool.query(
+      'INSERT INTO duel_queue (user_id) VALUES ($1) ON CONFLICT (user_id) DO UPDATE SET queued_at = NOW()',
+      [userId]
+    );
+    return { ok: true, waiting: true, matched: false };
+  }
+
+  const createResult = await createDuel(partnerId);
+  if (!createResult.ok) {
+    await pool.query(
+      'INSERT INTO duel_queue (user_id) VALUES ($1) ON CONFLICT (user_id) DO UPDATE SET queued_at = NOW()',
+      [userId]
+    );
+    return createResult;
+  }
+
+  const joinResult = await joinDuel(createResult.duel_id, userId);
+  if (!joinResult.ok) return joinResult;
+
+  await pool.query(
+    `INSERT INTO duel_match_notify (user_id, duel_id) VALUES ($1, $2)
+     ON CONFLICT (user_id) DO UPDATE SET duel_id = EXCLUDED.duel_id, created_at = NOW()`,
+    [partnerId, createResult.duel_id]
+  );
+
+  const questions = await getDuelQuestions(createResult.duel_id);
+  return {
+    ok: true,
+    waiting: false,
+    matched: true,
+    duel_id: createResult.duel_id,
+    creator_id: partnerId,
+    questions,
+    resolve_after: createResult.resolve_after,
+    you_are: 'opponent',
+  };
+}
+
 // --- Raffle ---
 
 async function addRaffleTicket(userId, weekKey, source) {
@@ -1046,12 +1185,61 @@ async function checkAchievements(userId) {
 }
 
 // --- Leaderboard ---
+// Очки рейтинга: 5/5 (ядро) + серия + дуэли + активность (каждый сыгранный раунд до потолка).
+const LB_ROUND_CAP = 250;
+
+function computeLeaderboardRating(u) {
+  if (!u) return 0;
+  const t5 = Number(u.total_5of5) || 0;
+  const bs = Number(u.best_streak) || 0;
+  const dw = Number(u.duel_wins) || 0;
+  const tr = Number(u.total_rounds) || 0;
+  return t5 * 140 + bs * 35 + dw * 25 + Math.min(tr, LB_ROUND_CAP);
+}
 
 async function getLeaderboard() {
   const { rows } = await pool.query(
-    'SELECT telegram_id, username, first_name, total_5of5, best_streak, duel_wins, total_rounds FROM users ORDER BY total_5of5 DESC, best_streak DESC LIMIT 50'
+    `SELECT telegram_id, username, first_name, total_5of5, best_streak, duel_wins, total_rounds,
+      (COALESCE(total_5of5,0) * 140 + COALESCE(best_streak,0) * 35 + COALESCE(duel_wins,0) * 25
+        + LEAST(COALESCE(total_rounds,0), ${LB_ROUND_CAP}))::int AS rating_score
+     FROM users
+     ORDER BY rating_score DESC, total_5of5 DESC, best_streak DESC, duel_wins DESC, total_rounds DESC, telegram_id ASC
+     LIMIT 50`
   );
   return rows;
+}
+
+/** Место в общем рейтинге (та же сортировка, что у топ-50). */
+async function getLeaderboardRank(telegramId) {
+  const u = await getUser(telegramId);
+  if (!u) return null;
+  const { rows } = await pool.query(
+    `WITH scored AS (
+       SELECT telegram_id, total_5of5, best_streak, duel_wins, total_rounds,
+         (COALESCE(total_5of5,0) * 140 + COALESCE(best_streak,0) * 35 + COALESCE(duel_wins,0) * 25
+           + LEAST(COALESCE(total_rounds,0), ${LB_ROUND_CAP}))::int AS r
+       FROM users
+     ),
+     me AS (SELECT * FROM scored WHERE telegram_id = $1)
+     SELECT 1 + COUNT(*)::int AS rank
+     FROM scored s CROSS JOIN me
+     WHERE s.telegram_id <> me.telegram_id
+       AND (
+         s.r > me.r
+         OR (s.r = me.r AND s.total_5of5 > me.total_5of5)
+         OR (s.r = me.r AND s.total_5of5 = me.total_5of5 AND s.best_streak > me.best_streak)
+         OR (s.r = me.r AND s.total_5of5 = me.total_5of5 AND s.best_streak = me.best_streak AND s.duel_wins > me.duel_wins)
+         OR (s.r = me.r AND s.total_5of5 = me.total_5of5 AND s.best_streak = me.best_streak AND s.duel_wins = me.duel_wins AND s.total_rounds > me.total_rounds)
+         OR (s.r = me.r AND s.total_5of5 = me.total_5of5 AND s.best_streak = me.best_streak AND s.duel_wins = me.duel_wins AND s.total_rounds = me.total_rounds AND s.telegram_id < me.telegram_id)
+       )`,
+    [telegramId]
+  );
+  return rows[0]?.rank ?? null;
+}
+
+async function getUsersCount() {
+  const { rows } = await pool.query('SELECT COUNT(*)::int AS c FROM users');
+  return rows[0]?.c ?? 0;
 }
 
 async function resetUser(telegramId) {
@@ -1066,8 +1254,10 @@ async function resetUser(telegramId) {
     await pool.query('DELETE FROM raffle_tickets WHERE user_id=$1', [tid]);
     await pool.query('DELETE FROM premium_grants WHERE user_id=$1', [tid]);
     await pool.query('DELETE FROM achievements WHERE user_id=$1', [tid]);
+    await pool.query('DELETE FROM duel_queue WHERE user_id=$1', [tid]);
+    await pool.query('DELETE FROM duel_match_notify WHERE user_id=$1', [tid]);
     await pool.query(`UPDATE users SET total_rounds=0, total_5of5=0, streak_5of5=0, best_streak=0,
-      duel_wins=0, duel_losses=0, duel_draws=0 WHERE telegram_id=$1`, [tid]);
+      duel_wins=0, duel_losses=0, duel_draws=0, referrer_reward_given=false WHERE telegram_id=$1`, [tid]);
     return { ok: true, message: `User ${tid} reset` };
   } catch (e) {
     console.error('[resetUser]', e);
@@ -1083,7 +1273,8 @@ module.exports = {
   answerRoundQuestion, resolveRound, getPendingRounds, getPendingRoundsForUser, getRecentRounds,
   generateInviteCode, canCreateDuel, createDuel, getDuel, getDuelByCode,
   getDuelQuestions, joinDuel, answerDuelQuestion, resolveDuel, getPendingDuels, getUserDuels,
+  tryDuelMatchmaking, pollDuelMatchmaking, cancelDuelMatchmaking,
   addRaffleTicket, getRaffleTickets, getUserTickets, getRaffle, drawRaffle,
-  getAchievements, grantAchievement, checkAchievements, getLeaderboard,
+  getAchievements, grantAchievement, checkAchievements, getLeaderboard, getLeaderboardRank, getUsersCount, computeLeaderboardRating, LB_ROUND_CAP,
   resetUser,
 };

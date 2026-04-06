@@ -38,6 +38,16 @@ async function processRoundResolution(round) {
 
       try { await _bot.sendMessage(dmId, msg); } catch (e) { /* user may have blocked bot */ }
     }
+
+    if (_bot && result.referralTicketForReferrerId) {
+      const refUser = await db.getUser(result.referralTicketForReferrerId);
+      const refDm = refUser && (refUser.chat_id || refUser.telegram_id);
+      if (refDm) {
+        try {
+          await _bot.sendMessage(refDm, '🎁 Приглашённый друг доиграл первый раунд — тебе +1 билет в недельный розыгрыш!');
+        } catch (e) { /* blocked */ }
+      }
+    }
   } catch (e) {
     console.error(`[Scheduler] Failed to resolve round #${round.id}:`, e.message);
   }

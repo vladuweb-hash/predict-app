@@ -8,13 +8,34 @@ const db = require('./database');
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+/** HTML не кэшировать (Telegram WebView иначе держит старый index). */
+app.use((req, res, next) => {
+  if (req.method === 'GET' && (req.path === '/' || req.path.endsWith('.html'))) {
+    res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders(res, filePath) {
-    if (filePath.endsWith('index.html')) {
-      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate, max-age=0');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
     }
   },
 }));
+
+app.get('/api/build', (req, res) => {
+  res.json({
+    ok: true,
+    version: process.env.APP_VERSION || require('./package.json').version,
+    node: process.version,
+  });
+});
 
 /** Telegram Bot API JSON (node-telegram-bot-api 0.66 has no createInvoiceLink) */
 async function telegramBotApi(method, body) {
@@ -111,10 +132,14 @@ app.post('/api/auth', async (req, res) => {
       } catch (e) { console.error('[Auth] Resolve bg:', e.message); }
     });
 
+    const totalPlayers = await db.getUsersCount();
     res.json({
       ok: true, user, isNew, botUsername,
       premium: db.isPremiumActive(user),
-      weekKey: db.getWeekKey()
+      weekKey: db.getWeekKey(),
+      rating: db.computeLeaderboardRating(user),
+      leaderboardRank: await db.getLeaderboardRank(user.telegram_id),
+      totalPlayers,
     });
   } catch (e) {
     console.error('[Auth]', e.message, e.stack);
@@ -315,6 +340,36 @@ app.post('/api/duel/create', authMiddleware, async (req, res) => {
   }
 });
 
+app.post('/api/duel/matchmaking/join', authMiddleware, async (req, res) => {
+  try {
+    const r = await db.tryDuelMatchmaking(req.tgUser.id);
+    if (r.ok === false) return res.status(400).json(r);
+    res.json(r);
+  } catch (e) {
+    console.error('[Duel/matchmaking/join]', e);
+    res.status(500).json({ ok: false, error: 'Server error' });
+  }
+});
+
+app.get('/api/duel/matchmaking/poll', authMiddleware, async (req, res) => {
+  try {
+    const r = await db.pollDuelMatchmaking(req.tgUser.id);
+    res.json(r);
+  } catch (e) {
+    console.error('[Duel/matchmaking/poll]', e);
+    res.status(500).json({ ok: false, error: 'Server error' });
+  }
+});
+
+app.post('/api/duel/matchmaking/cancel', authMiddleware, async (req, res) => {
+  try {
+    await db.cancelDuelMatchmaking(req.tgUser.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: 'Server error' });
+  }
+});
+
 app.post('/api/duel/join', authMiddleware, async (req, res) => {
   try {
     const { code } = req.body;
@@ -423,7 +478,10 @@ app.get('/api/profile', authMiddleware, async (req, res) => {
       achievementDefs: db.ACHIEVEMENT_DEFS,
       weekKey,
       tickets: tickets.length,
-      raffle
+      raffle,
+      rating: db.computeLeaderboardRating(user),
+      leaderboardRank: await db.getLeaderboardRank(user.telegram_id),
+      totalPlayers: await db.getUsersCount(),
     });
   } catch (e) {
     console.error('[Profile]', e);
@@ -431,12 +489,60 @@ app.get('/api/profile', authMiddleware, async (req, res) => {
   }
 });
 
-// --- Leaderboard ---
+// --- Leaderboard (публичный JSON: без telegram_id; isMe только при валидном initData) ---
+
+function numLeaderboardScore(v) {
+  if (v == null) return 0;
+  if (typeof v === 'bigint') return Number(v);
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function leaderboardDisplayName(row) {
+  const u = (row.username || '').trim();
+  if (u) return '@' + u.replace(/^@/, '');
+  const fn = (row.first_name || '').trim();
+  if (fn) return fn;
+  return 'Игрок';
+}
 
 app.get('/api/leaderboard', async (req, res) => {
   try {
-    const board = await db.getLeaderboard();
-    res.json({ ok: true, board });
+    const raw = await db.getLeaderboard();
+    const initData = req.headers['x-telegram-init-data'] || req.query.initData;
+    const tgUser = validateTelegramData(initData);
+    const myId = tgUser ? Number(tgUser.id) : null;
+
+    const board = raw.map((row, i) => ({
+      rank: i + 1,
+      name: leaderboardDisplayName(row),
+      rating: numLeaderboardScore(row.rating_score),
+      total_5of5: row.total_5of5 ?? 0,
+      best_streak: row.best_streak ?? 0,
+      duel_wins: row.duel_wins ?? 0,
+      total_rounds: row.total_rounds ?? 0,
+      isMe: myId != null && Number(row.telegram_id) === myId,
+    }));
+
+    const payload = {
+      ok: true,
+      board,
+      totalPlayers: await db.getUsersCount(),
+      ratingFormula: {
+        per5of5: 140,
+        perBestStreak: 35,
+        perDuelWin: 25,
+        perRoundUpTo: db.LB_ROUND_CAP,
+        note: 'Очки = 140×идеал + 35×лучшая серия 5/5 + 25×победы в дуэлях + сыгранные раунды (макс. ' + db.LB_ROUND_CAP + ')',
+      },
+    };
+    if (myId != null) {
+      const meUser = await db.getUser(myId);
+      payload.yourRank = await db.getLeaderboardRank(myId);
+      payload.yourRating = db.computeLeaderboardRating(meUser);
+      payload.inTop = board.some((r) => r.isMe);
+    }
+    res.json(payload);
   } catch (e) {
     res.status(500).json({ error: 'Server error' });
   }
@@ -524,7 +630,10 @@ app.post('/api/admin/reset-all', async (req, res) => {
 // --- Start ---
 
 async function start() {
+  const cacheTag = process.env.APP_VERSION || require('./package.json').version;
   console.log('[Server] Node', process.version);
+  console.log('[Server] Кэш-тег мини-приложения (APP_VERSION или package.json):', cacheTag);
+  console.log('[Server] WEBAPP_URL:', process.env.WEBAPP_URL ? process.env.WEBAPP_URL : 'MISSING');
   console.log('[Server] DATABASE_URL:', process.env.DATABASE_URL ? 'set' : 'MISSING');
 
   try {

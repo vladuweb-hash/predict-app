@@ -1,9 +1,20 @@
 require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const db = require('./database');
+const pkg = require('./package.json');
 
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 const WEBAPP_URL = process.env.WEBAPP_URL || '';
+
+/** Telegram кэширует Web App по URL — меняй APP_VERSION в .env или version в package.json после деплоя фронта. */
+function miniAppOpenUrl() {
+  const raw = (WEBAPP_URL || '').trim();
+  if (!raw) return '';
+  const base = raw.replace(/\/$/, '');
+  const tag = encodeURIComponent((process.env.APP_VERSION || pkg.version || '1').toString());
+  const sep = base.includes('?') ? '&' : '?';
+  return `${base}${sep}tgcb=${tag}`;
+}
 
 bot.on('polling_error', (err) => {
   console.error('[Bot] polling_error:', err.code || '', err.message);
@@ -35,7 +46,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
       reply_markup: {
         inline_keyboard: [[{
           text: '🎯 Играть',
-          web_app: { url: WEBAPP_URL }
+          web_app: { url: miniAppOpenUrl() }
         }]]
       }
     }
@@ -115,9 +126,25 @@ bot.onText(/\/duel/, async (msg) => {
       reply_markup: {
         inline_keyboard: [[{
           text: '⚔️ Создать дуэль',
-          web_app: { url: WEBAPP_URL }
+          web_app: { url: miniAppOpenUrl() }
         }]]
       }
+    }
+  );
+});
+
+bot.onText(/\/top/, async (msg) => {
+  const base = (WEBAPP_URL || '').replace(/\/$/, '');
+  if (!base) {
+    return bot.sendMessage(msg.chat.id, '🏆 Открой мини-приложение — вкладка «Топ».');
+  }
+  const tag = encodeURIComponent((process.env.APP_VERSION || pkg.version || '1').toString());
+  const url = `${base}/leaderboard.html?tgcb=${tag}`;
+  await bot.sendMessage(msg.chat.id,
+    '🏆 *Публичный рейтинг* — топ-50 по идеальным раундам. Ссылку можно переслать друзьям.',
+    {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: [[{ text: '🏆 Открыть топ', url }]] }
     }
   );
 });
@@ -135,6 +162,7 @@ bot.onText(/\/help/, async (msg) => {
     `⚔️ 2 победы в дуэлях = 1 билет\n\n` +
     `*Команды:*\n` +
     `/start — Запуск\n` +
+    `/top — Публичный рейтинг (ссылка)\n` +
     `/premium — Купить Premium (25⭐/нед)\n` +
     `/profile — Статистика\n` +
     `/duel — Дуэли\n` +

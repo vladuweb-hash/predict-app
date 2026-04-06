@@ -221,7 +221,7 @@ const ASSETS = [
 const DRAW_THRESHOLD = 0.0005; // ±0.05%
 
 const priceCache = {}; // { assetId: { price, timestamp } }
-const CACHE_TTL = 300000; // 5 min
+const CACHE_TTL = 600000; // 10 min (was 5 — extend so stale prices survive API outages)
 
 function getCachedPrice(assetId) {
   const c = priceCache[assetId];
@@ -254,7 +254,7 @@ const HEADERS = {
   'Accept': 'application/json',
 };
 
-async function fetchJSON(url, timeout = 15000) {
+async function fetchJSON(url, timeout = 20000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   try {
@@ -611,12 +611,17 @@ async function canStartRound(userId) {
 }
 
 async function createRound(userId) {
-  let candidates = pickRandomAssets(8); // pick extra in case some fail
+  let candidates = pickRandomAssets(8);
   const candidateIds = candidates.map(a => a.id);
-  const prices = await fetchCurrentPrices(candidateIds);
+  let prices = await fetchCurrentPrices(candidateIds);
+  let assets = candidates.filter(a => prices[a.id] && prices[a.id] > 0).slice(0, 5);
 
-  // Keep only assets with valid prices, take first 5
-  const assets = candidates.filter(a => prices[a.id] && prices[a.id] > 0).slice(0, 5);
+  if (assets.length < 3) {
+    console.log('[Round] Retry after 3s...');
+    await new Promise(r => setTimeout(r, 3000));
+    prices = await fetchCurrentPrices(candidateIds);
+    assets = candidates.filter(a => prices[a.id] && prices[a.id] > 0).slice(0, 5);
+  }
 
   if (assets.length < 5) {
     console.error('[Round] Only got prices for', assets.length, 'assets. Missing:', candidates.filter(a => !prices[a.id]).map(a => a.symbol));
@@ -842,9 +847,15 @@ async function canCreateDuel(userId) {
 async function createDuel(creatorId) {
   let candidates = pickRandomAssets(8);
   const candidateIds = candidates.map(a => a.id);
-  const prices = await fetchCurrentPrices(candidateIds);
+  let prices = await fetchCurrentPrices(candidateIds);
+  let assets = candidates.filter(a => prices[a.id] && prices[a.id] > 0).slice(0, 5);
 
-  const assets = candidates.filter(a => prices[a.id] && prices[a.id] > 0).slice(0, 5);
+  if (assets.length < 3) {
+    console.log('[Duel] Retry after 3s...');
+    await new Promise(r => setTimeout(r, 3000));
+    prices = await fetchCurrentPrices(candidateIds);
+    assets = candidates.filter(a => prices[a.id] && prices[a.id] > 0).slice(0, 5);
+  }
   if (assets.length < 3) return { ok: false, error: 'Не удалось загрузить цены. Попробуй через минуту.' };
 
   const code = generateInviteCode();

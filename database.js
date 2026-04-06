@@ -151,6 +151,15 @@ async function initDB() {
       UNIQUE(user_id, type)
     );
 
+    CREATE TABLE IF NOT EXISTS friendships (
+      id SERIAL PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      friend_id BIGINT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(user_id, friend_id)
+    );
+
     CREATE TABLE IF NOT EXISTS duel_queue (
       user_id BIGINT PRIMARY KEY,
       queued_at TIMESTAMPTZ DEFAULT NOW()
@@ -1266,6 +1275,81 @@ async function getUsersCount() {
   return rows[0]?.c ?? 0;
 }
 
+// --- Friends ---
+
+async function sendFriendRequest(fromId, toId) {
+  if (fromId == toId) return { ok: false, error: 'Нельзя добавить себя' };
+  const toUser = await getUser(toId);
+  if (!toUser) return { ok: false, error: 'Пользователь не найден' };
+
+  const { rows: existing } = await pool.query(
+    `SELECT * FROM friendships WHERE (user_id=$1 AND friend_id=$2) OR (user_id=$2 AND friend_id=$1)`,
+    [fromId, toId]
+  );
+  if (existing.length > 0) {
+    const row = existing[0];
+    if (row.status === 'accepted') return { ok: true, already: true };
+    if (Number(row.user_id) === Number(fromId)) return { ok: true, already: true, pending: true };
+    await pool.query(`UPDATE friendships SET status='accepted' WHERE id=$1`, [row.id]);
+    return { ok: true, accepted: true };
+  }
+
+  await pool.query(
+    `INSERT INTO friendships (user_id, friend_id, status) VALUES ($1,$2,'pending') ON CONFLICT DO NOTHING`,
+    [fromId, toId]
+  );
+  return { ok: true, sent: true };
+}
+
+async function acceptFriendRequest(userId, fromId) {
+  const { rows } = await pool.query(
+    `UPDATE friendships SET status='accepted' WHERE user_id=$1 AND friend_id=$2 AND status='pending' RETURNING *`,
+    [fromId, userId]
+  );
+  if (rows.length === 0) return { ok: false, error: 'Запрос не найден' };
+  return { ok: true };
+}
+
+async function removeFriend(userId, friendId) {
+  await pool.query(
+    `DELETE FROM friendships WHERE (user_id=$1 AND friend_id=$2) OR (user_id=$2 AND friend_id=$1)`,
+    [userId, friendId]
+  );
+  return { ok: true };
+}
+
+async function getFriends(userId) {
+  const { rows } = await pool.query(
+    `SELECT u.telegram_id, u.username, u.first_name, u.total_5of5, u.best_streak, u.duel_wins, u.total_rounds,
+       CASE WHEN f.user_id = $1 THEN f.friend_id ELSE f.user_id END AS fid
+     FROM friendships f
+     JOIN users u ON u.telegram_id = CASE WHEN f.user_id = $1 THEN f.friend_id ELSE f.user_id END
+     WHERE (f.user_id = $1 OR f.friend_id = $1) AND f.status = 'accepted'
+     ORDER BY u.total_5of5 DESC, u.best_streak DESC`,
+    [userId]
+  );
+  return rows;
+}
+
+async function getFriendRequests(userId) {
+  const { rows } = await pool.query(
+    `SELECT u.telegram_id, u.username, u.first_name, f.created_at
+     FROM friendships f JOIN users u ON u.telegram_id = f.user_id
+     WHERE f.friend_id = $1 AND f.status = 'pending'
+     ORDER BY f.created_at DESC`,
+    [userId]
+  );
+  return rows;
+}
+
+async function areFriends(a, b) {
+  const { rows } = await pool.query(
+    `SELECT 1 FROM friendships WHERE status='accepted' AND ((user_id=$1 AND friend_id=$2) OR (user_id=$2 AND friend_id=$1))`,
+    [a, b]
+  );
+  return rows.length > 0;
+}
+
 async function resetUser(telegramId) {
   try {
     const user = await getUser(telegramId);
@@ -1280,6 +1364,7 @@ async function resetUser(telegramId) {
     await pool.query('DELETE FROM achievements WHERE user_id=$1', [tid]);
     await pool.query('DELETE FROM duel_queue WHERE user_id=$1', [tid]);
     await pool.query('DELETE FROM duel_match_notify WHERE user_id=$1', [tid]);
+    await pool.query('DELETE FROM friendships WHERE user_id=$1 OR friend_id=$1', [tid]);
     await pool.query(`UPDATE users SET total_rounds=0, total_5of5=0, streak_5of5=0, best_streak=0,
       duel_wins=0, duel_losses=0, duel_draws=0, referrer_reward_given=false WHERE telegram_id=$1`, [tid]);
     return { ok: true, message: `User ${tid} reset` };
@@ -1300,5 +1385,6 @@ module.exports = {
   tryDuelMatchmaking, pollDuelMatchmaking, cancelDuelMatchmaking,
   addRaffleTicket, getRaffleTickets, getUserTickets, getRaffle, drawRaffle,
   getAchievements, grantAchievement, checkAchievements, getLeaderboard, getLeaderboardRank, getUsersCount, computeLeaderboardRating, LB_ROUND_CAP,
+  sendFriendRequest, acceptFriendRequest, removeFriend, getFriends, getFriendRequests, areFriends,
   resetUser,
 };

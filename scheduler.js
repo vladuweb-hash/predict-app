@@ -114,6 +114,18 @@ async function resolveDuels() {
           const oId = opponent && (opponent.chat_id || opponent.telegram_id);
           if (cId) { try { await _bot.sendMessage(cId, msg); } catch (e) {} }
           if (oId) { try { await _bot.sendMessage(oId, msg); } catch (e) {} }
+
+          try {
+            const alreadyFriends = await db.areFriends(duel.creator_id, duel.opponent_id);
+            if (!alreadyFriends) {
+              const botName = (await _bot.getMe()).username;
+              const friendMsg = '👥 Добавить соперника в друзья?';
+              const creatorLink = `https://t.me/${botName}?startapp=friend_${duel.creator_id}`;
+              const opponentLink = `https://t.me/${botName}?startapp=friend_${duel.opponent_id}`;
+              if (oId) { try { await _bot.sendMessage(oId, friendMsg, { reply_markup: { inline_keyboard: [[{ text: '➕ Добавить в друзья', url: creatorLink }]] } }); } catch (e) {} }
+              if (cId) { try { await _bot.sendMessage(cId, friendMsg, { reply_markup: { inline_keyboard: [[{ text: '➕ Добавить в друзья', url: opponentLink }]] } }); } catch (e) {} }
+            }
+          } catch (e) { console.error('[Scheduler] Friend suggest error:', e.message); }
         }
       } catch (e) {
         console.error(`[Scheduler] Failed to resolve duel #${duel.id}:`, e.message);

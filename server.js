@@ -437,6 +437,64 @@ app.get('/api/duels/history', authMiddleware, async (req, res) => {
   }
 });
 
+// --- Friends ---
+
+app.get('/api/friends', authMiddleware, async (req, res) => {
+  try {
+    const friends = await db.getFriends(req.tgUser.id);
+    const requests = await db.getFriendRequests(req.tgUser.id);
+    const safe = friends.map(f => ({
+      telegram_id: f.telegram_id,
+      name: f.username ? '@' + f.username : f.first_name || 'Игрок',
+      rating: db.computeLeaderboardRating(f),
+      total_5of5: f.total_5of5 ?? 0,
+      best_streak: f.best_streak ?? 0,
+      duel_wins: f.duel_wins ?? 0,
+      total_rounds: f.total_rounds ?? 0,
+    }));
+    const safeReq = requests.map(r => ({
+      telegram_id: r.telegram_id,
+      name: r.username ? '@' + r.username : r.first_name || 'Игрок',
+    }));
+    res.json({ ok: true, friends: safe, requests: safeReq });
+  } catch (e) {
+    console.error('[Friends]', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/friends/add', authMiddleware, async (req, res) => {
+  try {
+    const { friendId } = req.body;
+    if (!friendId) return res.status(400).json({ ok: false, error: 'friendId required' });
+    const r = await db.sendFriendRequest(req.tgUser.id, friendId);
+    res.json(r);
+  } catch (e) {
+    console.error('[Friends/add]', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/friends/accept', authMiddleware, async (req, res) => {
+  try {
+    const { friendId } = req.body;
+    const r = await db.acceptFriendRequest(req.tgUser.id, friendId);
+    res.json(r);
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/friends/remove', authMiddleware, async (req, res) => {
+  try {
+    const { friendId } = req.body;
+    const r = await db.removeFriend(req.tgUser.id, friendId);
+    res.json(r);
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // --- Premium ---
 
 app.post('/api/premium/buy', authMiddleware, async (req, res) => {

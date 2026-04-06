@@ -1,6 +1,6 @@
 {
   "name": "predict-app",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Telegram Mini App - Predict game for audience growth",
   "main": "server.js",
   "scripts": {

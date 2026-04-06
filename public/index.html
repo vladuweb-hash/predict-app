@@ -218,6 +218,21 @@ a{color:var(--accent2);text-decoration:none}
 .lb-you.in{border:1px solid var(--accent);background:rgba(108,92,231,.1)}
 .lb-you.out{border:1px dashed var(--bg3)}
 
+/* Friends */
+.fr-section{margin-top:16px}
+.fr-title{font-size:16px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.fr-badge{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--red);color:#fff;font-size:11px;font-weight:700}
+.fr-row{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--bg2);border-radius:12px;margin-bottom:8px}
+.fr-avatar{width:38px;height:38px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff;flex-shrink:0}
+.fr-info{flex:1;min-width:0}
+.fr-name{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fr-rating{font-size:12px;color:var(--gold)}
+.fr-actions{display:flex;gap:6px;flex-shrink:0}
+.fr-btn{background:none;border:1px solid var(--bg3);color:var(--text2);font-size:18px;width:34px;height:34px;border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.fr-btn:active{opacity:.7}
+.fr-btn.accept{border-color:var(--green);color:var(--green)}
+.fr-btn.decline{border-color:var(--red);color:var(--red)}
+
 /* Scrollbar */
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -1205,8 +1220,11 @@ async function loadProfile() {
     <div class="achievements-title">Достижения (${data.achievements?.length || 0}/${(data.achievementDefs || []).length})</div>
     <div class="ach-grid">${achHtml}</div>
 
+    <div id="friendsSection" class="fr-section"></div>
+
     <div class="sub" style="margin-top:16px;text-align:center;opacity:0.9">За друга, который доиграет первый раунд по твоей ссылке, ты получишь +1 билет в розыгрыш недели.</div>
     <button class="btn btn-outline" style="margin-top:20px" onclick="shareInvite()">📨 Пригласить друга</button>
+    <button class="btn btn-outline" style="margin-top:8px" onclick="shareFriendLink()">👥 Ссылка «Добавить в друзья»</button>
     <button class="btn btn-outline" style="margin-top:8px" onclick="showTab('play')">🎯 Играть</button>`;
 
   updateRatingStrip({
@@ -1214,6 +1232,8 @@ async function loadProfile() {
     leaderboardRank: data.leaderboardRank,
     totalPlayers: data.totalPlayers,
   });
+
+  loadFriendsSection();
 }
 
 function shareInvite() {
@@ -1222,6 +1242,78 @@ function shareInvite() {
   const link = `https://t.me/${name}?startapp=ref_${currentUser.telegram_id}`;
   const url = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
   window.open(url, '_blank');
+}
+
+function shareFriendLink() {
+  const name = botName || 'your_bot';
+  const link = `https://t.me/${name}?startapp=friend_${currentUser.telegram_id}`;
+  const text = '👥 Добавь меня в друзья в «Предскажи»!';
+  const url = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
+  window.open(url, '_blank');
+}
+
+async function loadFriendsSection() {
+  const el = document.getElementById('friendsSection');
+  if (!el) return;
+  const data = await api('/api/friends');
+  if (!data.ok) { el.innerHTML = ''; return; }
+
+  const { friends, requests } = data;
+  let html = '';
+
+  if (requests.length > 0) {
+    html += `<div class="fr-title">📩 Запросы в друзья <span class="fr-badge">${requests.length}</span></div>`;
+    requests.forEach(r => {
+      html += `<div class="fr-row">
+        <div class="fr-avatar">${(r.name || '?')[0].toUpperCase()}</div>
+        <div class="fr-info"><div class="fr-name">${escapeHtml(r.name)}</div></div>
+        <div class="fr-actions">
+          <button class="fr-btn accept" onclick="acceptFriendReq(${r.telegram_id})" title="Принять">✓</button>
+          <button class="fr-btn decline" onclick="removeFriend(${r.telegram_id})" title="Отклонить">✕</button>
+        </div>
+      </div>`;
+    });
+  }
+
+  html += `<div class="fr-title">👥 Друзья${friends.length ? ` (${friends.length})` : ''}</div>`;
+
+  if (friends.length === 0) {
+    html += `<div class="card-sm" style="text-align:center;color:var(--text2);font-size:13px;padding:20px">
+      Пока нет друзей. Отправь ссылку «Добавить в друзья» или сыграй дуэль!</div>`;
+  } else {
+    const sorted = friends.slice().sort((a, b) => (b.rating || 0) - (a.rating || 0));
+    sorted.forEach((f, i) => {
+      html += `<div class="fr-row">
+        <div class="fr-avatar" style="font-size:13px;font-weight:800">${i + 1}</div>
+        <div class="fr-info">
+          <div class="fr-name">${escapeHtml(f.name)}</div>
+          <div class="fr-rating">⭐ ${f.rating || 0} очков</div>
+        </div>
+        <div class="fr-actions">
+          <button class="fr-btn" onclick="removeFriend(${f.telegram_id})" title="Удалить">✕</button>
+        </div>
+      </div>`;
+    });
+  }
+
+  el.innerHTML = html;
+}
+
+async function acceptFriendReq(friendId) {
+  const r = await apiPost('/api/friends/accept', { friendId });
+  if (r.ok) {
+    toast('Друг добавлен!');
+    loadFriendsSection();
+  } else {
+    toast(r.error || 'Ошибка');
+  }
+}
+
+async function removeFriend(friendId) {
+  const r = await apiPost('/api/friends/remove', { friendId });
+  if (r.ok) {
+    loadFriendsSection();
+  }
 }
 
 function showPremiumPopup() { $('premiumPopup').classList.add('show'); }
@@ -1328,6 +1420,22 @@ function duelPlayStartIndex(rawQuestions, userId, creatorId) {
 
 function handleDeepLink() {
   const start = getTelegramStartParam();
+  if (start.startsWith('friend_')) {
+    const friendId = start.slice(7);
+    if (!friendId) return;
+    setTimeout(async () => {
+      const r = await apiPost('/api/friends/add', { friendId: Number(friendId) });
+      if (r.ok) {
+        if (r.accepted) toast('Вы теперь друзья!');
+        else if (r.already) toast('Уже в друзьях');
+        else toast('Запрос дружбы отправлен!');
+        showTab('profile');
+      } else {
+        toast(r.error || 'Ошибка');
+      }
+    }, 350);
+    return;
+  }
   if (!start.startsWith('duel_')) return;
   const code = start.slice(5);
   if (!code) return;
@@ -1358,7 +1466,7 @@ auth().then(async () => {
     const r = await fetch('/api/build');
     const b = await r.json();
     const el = document.getElementById('buildMarker');
-    if (el && b.ok) el.textContent = 'клиент 2.1.0 · сервер v' + b.version;
+    if (el && b.ok) el.textContent = 'клиент 2.2.0 · сервер v' + b.version;
   } catch (e) { /* старый сервер без /api/build */ }
 });
 </script>

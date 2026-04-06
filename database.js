@@ -880,7 +880,7 @@ async function canCreateDuel(userId) {
     const { rows } = await pool.query(
       `SELECT COUNT(*) as c FROM duels WHERE creator_id=$1 AND started_at::date=$2::date`, [userId, today]
     );
-    if (parseInt(rows[0].c) >= 1) return { ok: false, error: 'Free users: 1 duel/day. Get Premium for unlimited!' };
+    if (parseInt(rows[0].c) >= 3) return { ok: false, error: 'Лимит 3 дуэли в день. Premium — без ограничений!' };
   }
   return { ok: true };
 }

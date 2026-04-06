@@ -453,12 +453,16 @@ app.get('/api/duels/history', authMiddleware, async (req, res) => {
       const oppName = isCreator
         ? (d.opponent_username ? '@' + d.opponent_username : d.opponent_name || null)
         : (d.creator_username ? '@' + d.creator_username : d.creator_name || null);
+      const totalQ = Number(d.total_q) || 5;
+      const myAnswered = isCreator ? Number(d.creator_answered) : Number(d.opponent_answered);
+      const oppAnswered = isCreator ? Number(d.opponent_answered) : Number(d.creator_answered);
       return {
         id: d.id, creator_id: d.creator_id, opponent_id: d.opponent_id,
         is_resolved: d.is_resolved, is_draw: d.is_draw, winner_id: d.winner_id,
         creator_correct: d.creator_correct, opponent_correct: d.opponent_correct,
         started_at: d.started_at, both_answered: d.both_answered,
         opponent_display: oppName,
+        total_q: totalQ, my_answered: myAnswered, opp_answered: oppAnswered,
       };
     });
     res.json({ ok: true, duels });

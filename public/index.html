@@ -420,6 +420,20 @@ function toast(msg) {
   setTimeout(() => t.classList.remove('show'), 3000);
 }
 
+function formatTimeAgo(dateStr) {
+  if (!dateStr) return '';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'только что';
+  if (m < 60) return m + ' мин назад';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + ' ч назад';
+  const days = Math.floor(h / 24);
+  if (days === 1) return 'вчера';
+  if (days < 7) return days + ' дн назад';
+  return new Date(dateStr).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+}
+
 function escapeHtml(str) {
   const d = document.createElement('div');
   d.textContent = str == null ? '' : String(str);
@@ -976,32 +990,49 @@ async function loadDuels() {
     '<div style="font-size:14px;font-weight:600;margin-bottom:8px">История</div>' +
     data.duels.map(d => {
       const opp = d.opponent_display ? escapeHtml(d.opponent_display) : null;
-      let status, statusColor = '';
+      const tq = d.total_q || 5;
+      let statusIcon, statusText, statusColor = '', detail = '';
+
       if (d.is_resolved) {
         const isWin = d.winner_id == currentUser.telegram_id;
         const isDraw = d.is_draw;
         const isCreator = d.creator_id == currentUser.telegram_id;
         const myScore = isCreator ? (d.creator_correct ?? '?') : (d.opponent_correct ?? '?');
         const oppScore = isCreator ? (d.opponent_correct ?? '?') : (d.creator_correct ?? '?');
-        const scoreStr = `${myScore}:${oppScore}`;
-        if (isWin) { status = `🏆 Победа ${scoreStr}`; statusColor = 'var(--green)'; }
-        else if (isDraw) { status = `🤝 Ничья ${scoreStr}`; statusColor = 'var(--text2)'; }
-        else { status = `😔 ${scoreStr}`; statusColor = 'var(--red)'; }
+        if (isWin) { statusIcon = '🏆'; statusText = 'Победа'; statusColor = 'var(--green)'; }
+        else if (isDraw) { statusIcon = '🤝'; statusText = 'Ничья'; statusColor = 'var(--text2)'; }
+        else { statusIcon = '😔'; statusText = 'Поражение'; statusColor = 'var(--red)'; }
+        detail = `${myScore}:${oppScore} из ${tq}`;
       } else if (!d.opponent_id) {
-        status = '📨 Ждёт соперника';
+        statusIcon = '📨'; statusText = 'Ждёт соперника'; statusColor = '#f0ad4e';
+        detail = 'Ссылка отправлена';
+      } else if (d.both_answered) {
+        statusIcon = '⏳'; statusText = 'Подсчёт результатов'; statusColor = '#5bc0de';
+        detail = 'Оба ответили, ждём итоги';
       } else {
-        status = '⏳ В процессе';
+        statusIcon = '🎮'; statusText = 'В процессе'; statusColor = '#5bc0de';
+        const myDone = d.my_answered >= tq;
+        const oppDone = d.opp_answered >= tq;
+        if (myDone && !oppDone) detail = `Ты ✅ — соперник ${d.opp_answered}/${tq}`;
+        else if (!myDone && oppDone) detail = `Соперник ✅ — ты ${d.my_answered}/${tq}`;
+        else if (!myDone && !oppDone) detail = `Ты ${d.my_answered}/${tq} — сопер. ${d.opp_answered}/${tq}`;
+        else detail = 'Оба ответили';
       }
+
       const canCancel = !d.opponent_id && !d.is_resolved && d.creator_id == currentUser.telegram_id;
-      const oppLine = opp ? `<div style="font-size:12px;color:var(--text2)">vs ${opp}</div>` : '';
+      const oppLine = opp ? `vs ${opp}` : '';
+      const timeAgo = formatTimeAgo(d.started_at);
       return `<div class="duel-card" style="position:relative">
         <div onclick="openDuel(${d.id})" style="display:flex;align-items:center;gap:10px;flex:1;cursor:pointer">
-          <div>⚔️</div>
+          <div style="font-size:22px;width:28px;text-align:center">${statusIcon}</div>
           <div style="flex:1;min-width:0">
-            <div class="d-vs" style="font-size:13px">Дуэль #${d.id}</div>
-            ${oppLine}
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="font-weight:600;font-size:13px">Дуэль #${d.id}</span>
+              ${oppLine ? `<span style="font-size:12px;color:var(--text2)">${oppLine}</span>` : ''}
+            </div>
+            <div style="font-size:12px;color:${statusColor};font-weight:500;margin-top:2px">${statusText}</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:1px">${detail}${timeAgo ? ' · ' + timeAgo : ''}</div>
           </div>
-          <div class="d-result" style="color:${statusColor};font-size:13px;text-align:right">${status}</div>
         </div>
         ${canCancel ? `<button onclick="event.stopPropagation();cancelOneDuel(${d.id})" style="background:none;border:none;color:var(--red);font-size:18px;padding:6px 10px;cursor:pointer;flex-shrink:0" title="Удалить">✕</button>` : ''}
       </div>`;

@@ -1056,7 +1056,10 @@ async function getUserDuels(userId, limit = 10) {
   const { rows } = await pool.query(
     `SELECT d.*,
        c.first_name AS creator_name, c.username AS creator_username,
-       o.first_name AS opponent_name, o.username AS opponent_username
+       o.first_name AS opponent_name, o.username AS opponent_username,
+       (SELECT COUNT(*) FROM duel_questions dq WHERE dq.duel_id=d.id) AS total_q,
+       (SELECT COUNT(*) FROM duel_questions dq WHERE dq.duel_id=d.id AND dq.creator_answer IS NOT NULL) AS creator_answered,
+       (SELECT COUNT(*) FROM duel_questions dq WHERE dq.duel_id=d.id AND dq.opponent_answer IS NOT NULL) AS opponent_answered
      FROM duels d
      LEFT JOIN users c ON c.telegram_id = d.creator_id
      LEFT JOIN users o ON o.telegram_id = d.opponent_id

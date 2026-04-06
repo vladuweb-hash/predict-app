@@ -583,16 +583,21 @@ app.get('/api/leaderboard', async (req, res) => {
     const tgUser = validateTelegramData(initData);
     const myId = tgUser ? Number(tgUser.id) : null;
 
-    const board = raw.map((row, i) => ({
-      rank: i + 1,
-      name: leaderboardDisplayName(row),
-      rating: numLeaderboardScore(row.rating_score),
-      total_5of5: row.total_5of5 ?? 0,
-      best_streak: row.best_streak ?? 0,
-      duel_wins: row.duel_wins ?? 0,
-      total_rounds: row.total_rounds ?? 0,
-      isMe: myId != null && Number(row.telegram_id) === myId,
-    }));
+    const board = raw.map((row, i) => {
+      const isMe = myId != null && Number(row.telegram_id) === myId;
+      const entry = {
+        rank: i + 1,
+        name: leaderboardDisplayName(row),
+        rating: numLeaderboardScore(row.rating_score),
+        total_5of5: row.total_5of5 ?? 0,
+        best_streak: row.best_streak ?? 0,
+        duel_wins: row.duel_wins ?? 0,
+        total_rounds: row.total_rounds ?? 0,
+        isMe,
+      };
+      if (myId != null && !isMe) entry.tid = Number(row.telegram_id);
+      return entry;
+    });
 
     const payload = {
       ok: true,

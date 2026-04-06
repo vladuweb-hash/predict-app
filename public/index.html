@@ -1065,6 +1065,9 @@ async function loadLeaderboard() {
 
   const rows = (data.board || []).map((row) => {
     const pts = coalesceLeaderboardRating(row);
+    const addBtn = row.tid && !row.isMe
+      ? `<button class="fr-btn" onclick="event.stopPropagation();addFriendFromLb(${row.tid},this)" title="Добавить в друзья" style="flex-shrink:0;margin-left:6px">👥</button>`
+      : '';
     return `
     <div class="lb-row${row.isMe ? ' lb-me' : ''}" role="listitem">
       <div class="lb-row-head">
@@ -1073,6 +1076,7 @@ async function loadLeaderboard() {
           <div class="lb-name">${escapeHtml(row.name)}</div>
         </div>
         <div class="lb-pts"><span class="lb-pts-num">${pts}</span><span class="lb-pts-lbl">очки</span></div>
+        ${addBtn}
       </div>
       <div class="lb-sub">${row.total_5of5} идеал. · серия ${row.best_streak} · ${row.duel_wins} побед · ${row.total_rounds} раундов</div>
     </div>`;
@@ -1110,6 +1114,22 @@ async function loadLeaderboard() {
       leaderboardRank: data.yourRank,
       totalPlayers: data.totalPlayers,
     });
+  }
+}
+
+async function addFriendFromLb(tid, btn) {
+  btn.disabled = true;
+  const r = await apiPost('/api/friends/add', { friendId: tid });
+  if (r.ok) {
+    if (r.accepted) toast('Вы теперь друзья!');
+    else if (r.already) toast('Уже в друзьях');
+    else toast('Запрос отправлен!');
+    btn.textContent = '✓';
+    btn.style.color = 'var(--green)';
+    btn.style.borderColor = 'var(--green)';
+  } else {
+    toast(r.error || 'Ошибка');
+    btn.disabled = false;
   }
 }
 

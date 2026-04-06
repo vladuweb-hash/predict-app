@@ -431,7 +431,21 @@ app.get('/api/duel/:id', authMiddleware, async (req, res) => {
 
 app.get('/api/duels/history', authMiddleware, async (req, res) => {
   try {
-    const duels = await db.getUserDuels(req.tgUser.id, 20);
+    const raw = await db.getUserDuels(req.tgUser.id, 20);
+    const myId = Number(req.tgUser.id);
+    const duels = raw.map(d => {
+      const isCreator = Number(d.creator_id) === myId;
+      const oppName = isCreator
+        ? (d.opponent_username ? '@' + d.opponent_username : d.opponent_name || null)
+        : (d.creator_username ? '@' + d.creator_username : d.creator_name || null);
+      return {
+        id: d.id, creator_id: d.creator_id, opponent_id: d.opponent_id,
+        is_resolved: d.is_resolved, is_draw: d.is_draw, winner_id: d.winner_id,
+        creator_correct: d.creator_correct, opponent_correct: d.opponent_correct,
+        started_at: d.started_at, both_answered: d.both_answered,
+        opponent_display: oppName,
+      };
+    });
     res.json({ ok: true, duels });
   } catch (e) {
     res.status(500).json({ error: 'Server error' });

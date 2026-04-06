@@ -1013,7 +1013,13 @@ async function getPendingDuels() {
 
 async function getUserDuels(userId, limit = 10) {
   const { rows } = await pool.query(
-    `SELECT * FROM duels WHERE (creator_id=$1 OR opponent_id=$1) ORDER BY started_at DESC LIMIT $2`,
+    `SELECT d.*,
+       c.first_name AS creator_name, c.username AS creator_username,
+       o.first_name AS opponent_name, o.username AS opponent_username
+     FROM duels d
+     LEFT JOIN users c ON c.telegram_id = d.creator_id
+     LEFT JOIN users o ON o.telegram_id = d.opponent_id
+     WHERE (d.creator_id=$1 OR d.opponent_id=$1) ORDER BY d.started_at DESC LIMIT $2`,
     [userId, limit]
   );
   return rows;

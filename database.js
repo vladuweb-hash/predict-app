@@ -188,6 +188,7 @@ async function initDB() {
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS chat_id BIGINT',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by BIGINT',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS referrer_reward_given BOOLEAN DEFAULT false',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ DEFAULT NOW()',
   ];
   for (const q of alterQueries) {
     try { await pool.query(q); } catch (e) { /* column already exists */ }
@@ -567,6 +568,23 @@ function isPremiumActive(user) {
 
 async function getAllUsers() {
   const { rows } = await pool.query('SELECT * FROM users');
+  return rows;
+}
+
+async function touchActivity(telegramId) {
+  await pool.query('UPDATE users SET last_active_at=NOW() WHERE telegram_id=$1', [telegramId]);
+}
+
+async function getInactiveUsers(hoursAgo) {
+  const { rows } = await pool.query(
+    `SELECT * FROM users
+     WHERE notifications = true
+       AND chat_id IS NOT NULL
+       AND last_active_at < NOW() - INTERVAL '1 hour' * $1
+       AND last_active_at > NOW() - INTERVAL '1 hour' * ($1 + 24)
+     ORDER BY last_active_at ASC`,
+    [hoursAgo]
+  );
   return rows;
 }
 
@@ -1377,7 +1395,7 @@ async function resetUser(telegramId) {
 module.exports = {
   pool, initDB, ASSETS, DRAW_THRESHOLD, ACHIEVEMENT_DEFS,
   fetchCurrentPrices, fetchSparkline, getWeekKey,
-  getUser, createUser, saveUser, isPremiumActive, getAllUsers,
+  getUser, createUser, saveUser, isPremiumActive, getAllUsers, touchActivity, getInactiveUsers,
   canStartRound, createRound, getRound, getRoundQuestions, getActiveRound,
   answerRoundQuestion, resolveRound, getPendingRounds, getPendingRoundsForUser, getRecentRounds,
   generateInviteCode, canCreateDuel, createDuel, getDuel, getDuelByCode,

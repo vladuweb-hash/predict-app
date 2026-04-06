@@ -94,6 +94,7 @@ function authMiddleware(req, res, next) {
   const tgUser = validateTelegramData(initData);
   if (!tgUser) return res.status(401).json({ error: 'Unauthorized' });
   req.tgUser = tgUser;
+  db.touchActivity(tgUser.id).catch(() => {});
   next();
 }
 

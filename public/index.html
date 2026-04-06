@@ -1466,7 +1466,7 @@ auth().then(async () => {
     const r = await fetch('/api/build');
     const b = await r.json();
     const el = document.getElementById('buildMarker');
-    if (el && b.ok) el.textContent = 'клиент 2.2.0 · сервер v' + b.version;
+    if (el && b.ok) el.textContent = 'клиент 2.3.0 · сервер v' + b.version;
   } catch (e) { /* старый сервер без /api/build */ }
 });
 </script>

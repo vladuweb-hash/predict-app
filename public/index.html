@@ -279,6 +279,58 @@ let livePriceInterval = null;
 let matchmakingPollTimer = null;
 let duelsMatchmakingActive = false;
 
+const BINANCE_SYM = { bitcoin:'BTCUSDT', ethereum:'ETHUSDT', solana:'SOLUSDT', dogecoin:'DOGEUSDT', 'the-open-network':'TONUSDT', ripple:'XRPUSDT', binancecoin:'BNBUSDT', cardano:'ADAUSDT', gold:'PAXGUSDT' };
+
+async function clientFetchPrices(assetIds) {
+  const prices = {};
+  const syms = assetIds.map(id => BINANCE_SYM[id]).filter(Boolean);
+  if (syms.length === 0) return prices;
+  try {
+    const url = 'https://api.binance.com/api/v3/ticker/price?symbols=' + encodeURIComponent(JSON.stringify(syms));
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(r.status);
+    const data = await r.json();
+    const symToId = {};
+    for (const [id, s] of Object.entries(BINANCE_SYM)) { symToId[s] = id; }
+    for (const t of data) {
+      const id = symToId[t.symbol];
+      if (id && t.price) prices[id] = parseFloat(t.price);
+    }
+  } catch (e) {
+    for (const id of assetIds) {
+      const sym = BINANCE_SYM[id];
+      if (!sym) continue;
+      try {
+        const r = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=' + sym);
+        const d = await r.json();
+        if (d?.price) prices[id] = parseFloat(d.price);
+      } catch (_) { /* skip */ }
+    }
+  }
+  if (assetIds.includes('usd-rub') && !prices['usd-rub']) {
+    try {
+      const r = await fetch('https://open.er-api.com/v6/latest/USD');
+      const d = await r.json();
+      if (d?.rates?.RUB) prices['usd-rub'] = d.rates.RUB;
+    } catch (_) {}
+  }
+  if (assetIds.includes('eur-rub') && !prices['eur-rub']) {
+    try {
+      const r = await fetch('https://open.er-api.com/v6/latest/EUR');
+      const d = await r.json();
+      if (d?.rates?.RUB) prices['eur-rub'] = d.rates.RUB;
+    } catch (_) {}
+  }
+  if (assetIds.includes('eth-gas') && !prices['eth-gas']) {
+    try {
+      const r = await fetch('https://api.etherscan.io/api?module=gastracker&action=gasoracle');
+      const d = await r.json();
+      if (d?.result?.ProposeGasPrice) prices['eth-gas'] = parseFloat(d.result.ProposeGasPrice);
+    } catch (_) {}
+  }
+  return prices;
+}
+
 function stopMatchmakingPoll() {
   if (matchmakingPollTimer) {
     clearInterval(matchmakingPollTimer);
@@ -304,38 +356,52 @@ function duelCtaHtml() {
 }
 
 async function tickLivePrices(questions) {
-  const ids = [...new Set(questions.map(q => q.asset))].join(',');
+  const assetIds = [...new Set(questions.map(q => q.asset))];
+  let prices = {};
+
   try {
-    const data = await api('/api/prices/live?ids=' + encodeURIComponent(ids));
-    if (!data.ok || !data.prices) return;
-    questions.forEach((q, i) => {
-      const cur = data.prices[q.asset];
-      const start = Number(q.price_at_start);
-      const elV = document.getElementById('slLive-' + i);
-      const elP = document.getElementById('slPct-' + i);
-      const elDot = document.getElementById('slDot-' + i);
-      if (!elV) return;
-      if (cur == null || !Number.isFinite(cur) || !Number.isFinite(start) || start === 0) {
-        elV.textContent = '—';
-        if (elP) { elP.textContent = ''; elP.className = 'slr-live-pct'; }
-        return;
+    const data = await api('/api/prices/live?ids=' + encodeURIComponent(assetIds.join(',')));
+    if (data.ok && data.prices) prices = data.prices;
+  } catch (_) {}
+
+  const missing = assetIds.filter(id => !prices[id] || prices[id] <= 0);
+  if (missing.length > 0) {
+    try {
+      const client = await clientFetchPrices(missing);
+      Object.assign(prices, client);
+      if (Object.keys(client).length > 0) {
+        apiPost('/api/prices/report', { prices: client }).catch(() => {});
       }
-      elV.textContent = formatPrice(cur, q.asset);
-      const pct = ((cur - start) / start) * 100;
-      const sign = pct >= 0 ? '+' : '';
-      if (elP) {
-        elP.textContent = sign + pct.toFixed(3) + '%';
-        elP.className = 'slr-live-pct ' + (pct > 0.05 ? 'pct-up' : pct < -0.05 ? 'pct-down' : 'pct-flat');
-      }
-      if (elDot) {
-        const clamp = Math.max(-2.5, Math.min(2.5, pct));
-        const pos = 50 + (clamp / 2.5) * 42;
-        elDot.style.left = pos + '%';
-        elDot.classList.remove('dot-up', 'dot-down', 'dot-flat');
-        elDot.classList.add(pct > 0.05 ? 'dot-up' : pct < -0.05 ? 'dot-down' : 'dot-flat');
-      }
-    });
-  } catch (e) { /* тихо */ }
+    } catch (_) {}
+  }
+
+  questions.forEach((q, i) => {
+    const cur = prices[q.asset];
+    const start = Number(q.price_at_start);
+    const elV = document.getElementById('slLive-' + i);
+    const elP = document.getElementById('slPct-' + i);
+    const elDot = document.getElementById('slDot-' + i);
+    if (!elV) return;
+    if (cur == null || !Number.isFinite(cur) || !Number.isFinite(start) || start === 0) {
+      elV.textContent = '—';
+      if (elP) { elP.textContent = ''; elP.className = 'slr-live-pct'; }
+      return;
+    }
+    elV.textContent = formatPrice(cur, q.asset);
+    const pct = ((cur - start) / start) * 100;
+    const sign = pct >= 0 ? '+' : '';
+    if (elP) {
+      elP.textContent = sign + pct.toFixed(3) + '%';
+      elP.className = 'slr-live-pct ' + (pct > 0.05 ? 'pct-up' : pct < -0.05 ? 'pct-down' : 'pct-flat');
+    }
+    if (elDot) {
+      const clamp = Math.max(-2.5, Math.min(2.5, pct));
+      const pos = 50 + (clamp / 2.5) * 42;
+      elDot.style.left = pos + '%';
+      elDot.classList.remove('dot-up', 'dot-down', 'dot-flat');
+      elDot.classList.add(pct > 0.05 ? 'dot-up' : pct < -0.05 ? 'dot-down' : 'dot-flat');
+    }
+  });
 }
 
 function startLivePriceUpdates(questions) {

@@ -270,6 +270,21 @@ app.get('/api/prices/live', authMiddleware, async (req, res) => {
   }
 });
 
+app.post('/api/prices/report', authMiddleware, async (req, res) => {
+  try {
+    const p = req.body?.prices;
+    if (p && typeof p === 'object') {
+      const validAssets = new Set(db.ASSETS.map(a => a.id));
+      for (const [id, price] of Object.entries(p)) {
+        if (validAssets.has(id) && typeof price === 'number' && price > 0) {
+          db.setCachedPrice(id, price);
+        }
+      }
+    }
+    res.json({ ok: true });
+  } catch (e) { res.json({ ok: false }); }
+});
+
 // --- Health (keep-alive: ответ сразу; резолв в фоне чтобы cron не зависал) ---
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, uptime: process.uptime() | 0 });
@@ -727,6 +742,7 @@ async function start() {
 
   try {
     await db.initDB();
+    await db.warmPriceCache();
   } catch (e) {
     console.error('[Server] initDB failed — проверь DATABASE_URL и SSL (для облака задай DATABASE_SSL=true):', e.message);
     process.exit(1);

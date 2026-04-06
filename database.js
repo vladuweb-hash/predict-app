@@ -160,6 +160,12 @@ async function initDB() {
       UNIQUE(user_id, friend_id)
     );
 
+    CREATE TABLE IF NOT EXISTS price_cache (
+      asset_id TEXT PRIMARY KEY,
+      price DOUBLE PRECISION NOT NULL,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS duel_queue (
       user_id BIGINT PRIMARY KEY,
       queued_at TIMESTAMPTZ DEFAULT NOW()
@@ -220,8 +226,9 @@ const ASSETS = [
 
 const DRAW_THRESHOLD = 0.0005; // ±0.05%
 
-const priceCache = {}; // { assetId: { price, timestamp } }
-const CACHE_TTL = 600000; // 10 min (was 5 — extend so stale prices survive API outages)
+const priceCache = {};
+const CACHE_TTL = 600000; // 10 min in-memory
+const DB_CACHE_TTL = 3600000; // 1 hour for DB fallback
 
 function getCachedPrice(assetId) {
   const c = priceCache[assetId];
@@ -231,6 +238,33 @@ function getCachedPrice(assetId) {
 
 function setCachedPrice(assetId, price) {
   priceCache[assetId] = { price, timestamp: Date.now() };
+  pool.query(
+    `INSERT INTO price_cache (asset_id, price, updated_at) VALUES ($1, $2, NOW())
+     ON CONFLICT (asset_id) DO UPDATE SET price=$2, updated_at=NOW()`,
+    [assetId, price]
+  ).catch(() => {});
+}
+
+async function getDbCachedPrice(assetId) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT price, updated_at FROM price_cache WHERE asset_id=$1 AND updated_at > NOW() - INTERVAL '1 hour'`,
+      [assetId]
+    );
+    return rows[0]?.price || null;
+  } catch { return null; }
+}
+
+async function warmPriceCache() {
+  try {
+    const { rows } = await pool.query(
+      `SELECT asset_id, price, updated_at FROM price_cache WHERE updated_at > NOW() - INTERVAL '1 hour'`
+    );
+    for (const r of rows) {
+      priceCache[r.asset_id] = { price: r.price, timestamp: new Date(r.updated_at).getTime() };
+    }
+    console.log(`[Price] Warmed ${rows.length} prices from DB cache`);
+  } catch (e) { console.error('[Price] DB cache warm failed:', e.message); }
 }
 
 function pickRandomAssets(count = 5) {
@@ -474,7 +508,7 @@ async function fetchCurrentPrices(assetIds) {
 
   await Promise.all(tasks);
 
-  // Fill from cache for missing, update cache for successful
+  // Fill from in-memory cache, then DB cache for missing; update cache for successful
   for (const id of assetIds) {
     if (prices[id]) {
       setCachedPrice(id, prices[id]);
@@ -482,7 +516,14 @@ async function fetchCurrentPrices(assetIds) {
       const cached = getCachedPrice(id);
       if (cached) {
         prices[id] = cached;
-        console.log(`[Price] Cache hit: ${id}=${cached}`);
+        console.log(`[Price] Mem-cache hit: ${id}=${cached}`);
+      } else {
+        const dbCached = await getDbCachedPrice(id);
+        if (dbCached) {
+          prices[id] = dbCached;
+          priceCache[id] = { price: dbCached, timestamp: Date.now() };
+          console.log(`[Price] DB-cache hit: ${id}=${dbCached}`);
+        }
       }
     }
   }
@@ -1411,7 +1452,7 @@ async function resetUser(telegramId) {
 
 module.exports = {
   pool, initDB, ASSETS, DRAW_THRESHOLD, ACHIEVEMENT_DEFS,
-  fetchCurrentPrices, fetchSparkline, getWeekKey,
+  fetchCurrentPrices, fetchSparkline, getWeekKey, warmPriceCache, setCachedPrice,
   getUser, createUser, saveUser, isPremiumActive, getAllUsers, touchActivity, getInactiveUsers,
   canStartRound, createRound, getRound, getRoundQuestions, getActiveRound,
   answerRoundQuestion, resolveRound, getPendingRounds, getPendingRoundsForUser, getRecentRounds,

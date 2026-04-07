@@ -403,6 +403,18 @@ app.post('/api/duel/join', authMiddleware, async (req, res) => {
     const duel = await db.getDuelByCode(code);
     if (!duel) return res.status(404).json({ error: 'Duel not found' });
 
+    if (Number(duel.creator_id) === Number(req.tgUser.id)) {
+      const questions = await db.getDuelQuestions(duel.id);
+      return res.json({
+        ok: true,
+        duel_id: duel.id,
+        creator_id: duel.creator_id,
+        questions,
+        resolve_after: duel.resolve_after,
+        is_own: true,
+      });
+    }
+
     const result = await db.joinDuel(duel.id, req.tgUser.id);
     if (!result.ok) return res.status(400).json(result);
 

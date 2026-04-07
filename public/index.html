@@ -1133,10 +1133,10 @@ async function openDuel(duelId) {
   if (!data.ok) { toast('Ошибка'); return; }
   const d = data.duel;
   const qs = data.questions;
+  const isCreator = Number(currentUser.telegram_id) === Number(d.creator_id);
 
   if (d.is_resolved) {
     const rows = qs.map(q => {
-      const isCreator = currentUser.telegram_id == d.creator_id;
       const myCorrect = isCreator ? q.creator_correct : q.opponent_correct;
       return `<div class="result-row ${myCorrect ? 'correct' : 'wrong'}">
         <div class="r-emoji">${q.asset_emoji}</div>
@@ -1158,14 +1158,38 @@ async function openDuel(duelId) {
       </div>
       ${rows}
       <button class="btn btn-outline" style="margin-top:16px" onclick="showTab('duels')">Назад</button>`;
-  } else {
-    content.innerHTML = `
-      <div class="timer-block card">
-        <div class="icon-big">⚔️</div>
-        <p>Дуэль в процессе. Ожидание результатов...</p>
-        <button class="btn btn-outline" style="margin-top:16px" onclick="showTab('duels')">Назад</button>
-      </div>`;
+    return;
   }
+
+  const answerCol = isCreator ? 'creator_answer' : 'opponent_answer';
+  const unanswered = qs.filter(q => q[answerCol] == null);
+
+  if (unanswered.length > 0) {
+    const mapped = mapDuelQuestionsForPlay(qs);
+    const startIdx = duelPlayStartIndex(qs, currentUser.telegram_id, d.creator_id);
+    playDuel(duelId, mapped, startIdx);
+    return;
+  }
+
+  const oppCol = isCreator ? 'opponent_answer' : 'creator_answer';
+  const oppUnanswered = qs.filter(q => q[oppCol] == null);
+  const hasOpponent = !!d.opponent_id;
+
+  let statusMsg;
+  if (!hasOpponent) {
+    statusMsg = '📨 Соперник ещё не присоединился. Отправь ему ссылку!';
+  } else if (oppUnanswered.length > 0) {
+    statusMsg = `⏳ Ты ответил(а) на все! Соперник — ${qs.length - oppUnanswered.length}/${qs.length}. Ждём...`;
+  } else {
+    statusMsg = '⏳ Оба ответили. Подсчёт результатов...';
+  }
+
+  content.innerHTML = `
+    <div class="timer-block card">
+      <div class="icon-big">⚔️</div>
+      <p style="line-height:1.5">${statusMsg}</p>
+      <button class="btn btn-outline" style="margin-top:16px" onclick="showTab('duels')">Назад</button>
+    </div>`;
 }
 
 // --- LEADERBOARD ---
@@ -1553,7 +1577,11 @@ function duelPlayStartIndex(rawQuestions, userId, creatorId) {
   return i < 0 ? rawQuestions.length : i;
 }
 
+let _deepLinkHandled = false;
 function handleDeepLink() {
+  if (_deepLinkHandled) return;
+  _deepLinkHandled = true;
+
   const start = getTelegramStartParam();
   if (start.startsWith('friend_')) {
     const friendId = start.slice(7);
@@ -1577,6 +1605,11 @@ function handleDeepLink() {
   setTimeout(async () => {
     const data = await apiPost('/api/duel/join', { code });
     if (data.ok) {
+      if (data.is_own) {
+        showTab('duels');
+        openDuel(data.duel_id);
+        return;
+      }
       if (data.already_opponent) toast('Продолжаем дуэль');
       showTab('duels');
       let qs = data.questions;

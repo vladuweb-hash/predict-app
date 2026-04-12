@@ -27,6 +27,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
 
   let ref = null;
   if (param && /^\d+$/.test(param)) ref = param;
+  if (param.startsWith('ref_')) ref = param.slice(4);
 
   let user = await db.getUser(tgUser.id);
   if (!user) {
@@ -35,22 +36,35 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
   user.chat_id = chatId;
   await db.saveUser(user);
 
-  await bot.sendMessage(chatId,
-    `🎯 *Предскажи* — угадай, куда пойдут цены!\n\n` +
+  let appUrl = miniAppOpenUrl();
+  let btnText = '🎯 Играть';
+  let greeting = `🎯 *Предскажи* — угадай, куда пойдут цены!\n\n` +
     `📈 5 активов — выше или ниже через час?\n` +
-    `🎫 Угадай все 5 = билет в розыгрыш 500⭐\n` +
+    `🎫 Угадай все 5 = билет в розыгрыш\n` +
     `⚔️ Вызывай друзей на дуэли!\n\n` +
-    `Нажми кнопку ниже, чтобы играть 👇`,
-    {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [[{
-          text: '🎯 Играть',
-          web_app: { url: miniAppOpenUrl() }
-        }]]
-      }
+    `Нажми кнопку ниже, чтобы играть 👇`;
+
+  if (param.startsWith('duel_')) {
+    const sep = appUrl.includes('?') ? '&' : '?';
+    appUrl = appUrl + sep + 'startapp=' + encodeURIComponent(param);
+    btnText = '⚔️ Принять дуэль';
+    greeting = `⚔️ Тебя вызвали на дуэль!\n\nНажми кнопку ниже, чтобы принять вызов 👇`;
+  } else if (param.startsWith('friend_')) {
+    const sep = appUrl.includes('?') ? '&' : '?';
+    appUrl = appUrl + sep + 'startapp=' + encodeURIComponent(param);
+    btnText = '👥 Открыть';
+    greeting = `👥 Тебя приглашают в друзья!\n\nНажми кнопку ниже 👇`;
+  }
+
+  await bot.sendMessage(chatId, greeting, {
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [[{
+        text: btnText,
+        web_app: { url: appUrl }
+      }]]
     }
-  );
+  });
 });
 
 bot.onText(/\/profile/, async (msg) => {

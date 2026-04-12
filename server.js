@@ -610,20 +610,34 @@ app.get('/api/profile', authMiddleware, async (req, res) => {
   }
 });
 
+const AVATARS = ['😎','🤠','🦊','🐺','🦁','🐲','🦅','🐬','🎯','🔥','💎','⚡','🌟','👑','🎮','🏆','🦉','🐦','🗿','🏛️','🔮','📜','✨','🎖️','🏃','📢','👥','🤖'];
+const FAV_ASSETS = ['BTC','ETH','BNB','SOL','XRP','DOGE','TON','USD/RUB','EUR/USD'];
+const STRATEGIES = ['bull','bear','neutral'];
+const FRAMES = ['','gold','blue','green','red','purple','rainbow'];
+
+const PROFILE_FIELDS = ['bio','avatar_emoji','title','fav_asset','strategy','profile_frame'];
+const POINTS_PER_FIELD = 15;
+
+function countFilledFields(user) {
+  let c = 0;
+  if (user.bio) c++;
+  if (user.avatar_emoji) c++;
+  if (user.title) c++;
+  if (user.fav_asset) c++;
+  if (user.strategy) c++;
+  if (user.profile_frame) c++;
+  return c;
+}
+
 app.post('/api/profile/update', authMiddleware, async (req, res) => {
   try {
     const user = await db.getUser(req.tgUser.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const { bio, avatar_emoji, title } = req.body;
+    const { bio, avatar_emoji, title, fav_asset, strategy, profile_frame } = req.body;
 
-    if (bio !== undefined) {
-      user.bio = String(bio).slice(0, 60);
-    }
-    if (avatar_emoji !== undefined) {
-      const AVATARS = ['😎','🤠','🦊','🐺','🦁','🐲','🦅','🐬','🎯','🔥','💎','⚡','🌟','👑','🎮','🏆','🦉','🐦','🗿','🏛️','🔮','📜','✨','🎖️','🏃','📢','👥','🤖'];
-      user.avatar_emoji = AVATARS.includes(avatar_emoji) ? avatar_emoji : '';
-    }
+    if (bio !== undefined) user.bio = String(bio).slice(0, 60);
+    if (avatar_emoji !== undefined) user.avatar_emoji = AVATARS.includes(avatar_emoji) ? avatar_emoji : '';
     if (title !== undefined) {
       const achievements = await db.getAchievements(user.telegram_id);
       const unlockedBadges = achievements.map(a => {
@@ -632,9 +646,15 @@ app.post('/api/profile/update', authMiddleware, async (req, res) => {
       }).filter(Boolean);
       user.title = (title === '' || unlockedBadges.includes(title)) ? title : user.title;
     }
+    if (fav_asset !== undefined) user.fav_asset = FAV_ASSETS.includes(fav_asset) ? fav_asset : '';
+    if (strategy !== undefined) user.strategy = STRATEGIES.includes(strategy) ? strategy : '';
+    if (profile_frame !== undefined) user.profile_frame = FRAMES.includes(profile_frame) ? profile_frame : '';
+
+    const filled = countFilledFields(user);
+    user.bonus_points = filled * POINTS_PER_FIELD;
 
     await db.saveUser(user);
-    res.json({ ok: true });
+    res.json({ ok: true, bonus_points: user.bonus_points, filled, total: PROFILE_FIELDS.length });
   } catch (e) {
     console.error('[ProfileUpdate]', e);
     res.status(500).json({ error: 'Server error' });
@@ -664,6 +684,9 @@ app.get('/api/profile/:id', async (req, res) => {
         bio: user.bio || '',
         avatar_emoji: user.avatar_emoji || '',
         title: user.title || '',
+        fav_asset: user.fav_asset || '',
+        strategy: user.strategy || '',
+        profile_frame: user.profile_frame || '',
       },
       achievements,
       achievementDefs: db.ACHIEVEMENT_DEFS,

@@ -263,6 +263,10 @@ async function initDB() {
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT DEFAULT ''",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_emoji TEXT DEFAULT ''",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS title TEXT DEFAULT ''",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS fav_asset TEXT DEFAULT ''",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS strategy TEXT DEFAULT ''",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_frame TEXT DEFAULT ''",
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS bonus_points INTEGER DEFAULT 0',
     'ALTER TABLE duels ADD COLUMN IF NOT EXISTS stake INTEGER DEFAULT 0',
     'ALTER TABLE duels ADD COLUMN IF NOT EXISTS stake_paid BOOLEAN DEFAULT false',
   ];
@@ -664,12 +668,14 @@ async function saveUser(u) {
     UPDATE users SET username=$1, first_name=$2, is_premium=$3, premium_until=$4,
       streak_5of5=$5, best_streak=$6, total_rounds=$7, total_5of5=$8,
       duel_wins=$9, duel_losses=$10, duel_draws=$11, notifications=$12, chat_id=$13,
-      bio=$15, avatar_emoji=$16, title=$17
+      bio=$15, avatar_emoji=$16, title=$17,
+      fav_asset=$18, strategy=$19, profile_frame=$20, bonus_points=$21
     WHERE telegram_id=$14
   `, [u.username, u.first_name, u.is_premium, u.premium_until,
       u.streak_5of5, u.best_streak, u.total_rounds, u.total_5of5,
       u.duel_wins, u.duel_losses, u.duel_draws, u.notifications, u.chat_id, u.telegram_id,
-      u.bio || '', u.avatar_emoji || '', u.title || '']);
+      u.bio || '', u.avatar_emoji || '', u.title || '',
+      u.fav_asset || '', u.strategy || '', u.profile_frame || '', u.bonus_points || 0]);
 }
 
 function isPremiumActive(user) {
@@ -1395,7 +1401,8 @@ function computeLeaderboardRating(u) {
   const bs = Number(u.best_streak) || 0;
   const dw = Number(u.duel_wins) || 0;
   const tr = Number(u.total_rounds) || 0;
-  return t5 * 140 + bs * 35 + dw * 25 + Math.min(tr, LB_ROUND_CAP);
+  const bp = Number(u.bonus_points) || 0;
+  return t5 * 140 + bs * 35 + dw * 25 + Math.min(tr, LB_ROUND_CAP) + bp;
 }
 
 async function getLeaderboard() {
@@ -1403,7 +1410,7 @@ async function getLeaderboard() {
     `SELECT telegram_id, username, first_name, total_5of5, best_streak, duel_wins, total_rounds,
       COALESCE(avatar_emoji,'') AS avatar_emoji, COALESCE(title,'') AS title,
       (COALESCE(total_5of5,0) * 140 + COALESCE(best_streak,0) * 35 + COALESCE(duel_wins,0) * 25
-        + LEAST(COALESCE(total_rounds,0), ${LB_ROUND_CAP}))::int AS rating_score
+        + LEAST(COALESCE(total_rounds,0), ${LB_ROUND_CAP}) + COALESCE(bonus_points,0))::int AS rating_score
      FROM users
      ORDER BY rating_score DESC, total_5of5 DESC, best_streak DESC, duel_wins DESC, total_rounds DESC, telegram_id ASC
      LIMIT 50`
@@ -1419,7 +1426,7 @@ async function getLeaderboardRank(telegramId) {
     `WITH scored AS (
        SELECT telegram_id, total_5of5, best_streak, duel_wins, total_rounds,
          (COALESCE(total_5of5,0) * 140 + COALESCE(best_streak,0) * 35 + COALESCE(duel_wins,0) * 25
-           + LEAST(COALESCE(total_rounds,0), ${LB_ROUND_CAP}))::int AS r
+           + LEAST(COALESCE(total_rounds,0), ${LB_ROUND_CAP}) + COALESCE(bonus_points,0))::int AS r
        FROM users
      ),
      me AS (SELECT * FROM scored WHERE telegram_id = $1)

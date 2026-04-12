@@ -753,22 +753,24 @@ app.post('/api/admin/reset-all', async (req, res) => {
 
 // --- Start ---
 
-async function start() {
-  const cacheTag = process.env.APP_VERSION || require('./package.json').version;
-  console.log('[Server] Node', process.version);
-  console.log('[Server] Кэш-тег мини-приложения (APP_VERSION или package.json):', cacheTag);
-  console.log('[Server] WEBAPP_URL:', process.env.WEBAPP_URL ? process.env.WEBAPP_URL : 'MISSING');
-  console.log('[Server] DATABASE_URL:', process.env.DATABASE_URL ? 'set' : 'MISSING');
+process.on('uncaughtException', (e) => console.error('[UNCAUGHT]', e));
+process.on('unhandledRejection', (e) => console.error('[UNHANDLED]', e));
 
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`[Server] Running on :${PORT}`);
+  console.log('[Server] Node', process.version);
+  console.log('[Server] DATABASE_URL:', process.env.DATABASE_URL ? process.env.DATABASE_URL.replace(/:[^:@]+@/, ':***@') : 'MISSING');
+  console.log('[Server] DATABASE_SSL:', process.env.DATABASE_SSL || 'not set');
+});
+
+(async () => {
   try {
     await db.initDB();
     await db.warmPriceCache();
+    console.log('[Server] DB ready');
   } catch (e) {
     console.error('[Server] initDB failed:', e.message);
-    console.error('[Server] DATABASE_URL:', process.env.DATABASE_URL ? process.env.DATABASE_URL.replace(/:[^:@]+@/, ':***@') : 'MISSING');
-    console.error('[Server] DATABASE_SSL:', process.env.DATABASE_SSL || 'not set');
-    console.error('[Server] Computed SSL option:', JSON.stringify(require('./database').pool?.options?.ssl));
-    console.error('[Server] Запускаюсь без БД — API будет возвращать ошибки до перезапуска.');
   }
 
   try {
@@ -782,17 +784,13 @@ async function start() {
     console.error('[Bot] Init failed:', e.message);
   }
 
-  const scheduler = require('./scheduler');
-  scheduler.setBot(bot);
-  scheduler.start();
-
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => console.log(`[Server] Running on :${PORT}`));
-}
-
-start().catch((e) => {
-  console.error('[Server] Fatal:', e);
-  process.exit(1);
-});
+  try {
+    const scheduler = require('./scheduler');
+    scheduler.setBot(bot);
+    scheduler.start();
+  } catch (e) {
+    console.error('[Scheduler] Init failed:', e.message);
+  }
+})();
 
 module.exports = { app, getBot: () => bot };

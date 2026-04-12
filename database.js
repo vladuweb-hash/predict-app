@@ -7,7 +7,8 @@ function pgSslOption() {
   if (off) return false;
   if (on) return { rejectUnauthorized: false };
   if (/sslmode=require/i.test(url)) return { rejectUnauthorized: false };
-  // Облачные Postgres без "render.com" в строке (Supabase, AWS RDS, Railway и т.д.)
+  // Railway internal (.railway.internal) does NOT use SSL
+  if (/\.railway\.internal/i.test(url)) return false;
   if (/(render\.com|neon\.tech|supabase\.co|pooler\.supabase|amazonaws\.com|railway\.app|cockroachlabs\.cloud|azure\.com)/i.test(url)) {
     return { rejectUnauthorized: false };
   }

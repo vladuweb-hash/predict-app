@@ -30,10 +30,14 @@ app.use(express.static(path.join(__dirname, 'public'), {
 }));
 
 app.get('/api/build', (req, res) => {
+  const dbUrl = process.env.DATABASE_URL || '';
   res.json({
     ok: true,
     version: process.env.APP_VERSION || require('./package.json').version,
     node: process.version,
+    db_host: dbUrl ? new URL(dbUrl).hostname : 'MISSING',
+    db_ssl: String(process.env.DATABASE_SSL || 'auto'),
+    uptime: Math.round(process.uptime()),
   });
 });
 
@@ -760,8 +764,11 @@ async function start() {
     await db.initDB();
     await db.warmPriceCache();
   } catch (e) {
-    console.error('[Server] initDB failed — проверь DATABASE_URL и SSL (для облака задай DATABASE_SSL=true):', e.message);
-    process.exit(1);
+    console.error('[Server] initDB failed:', e.message);
+    console.error('[Server] DATABASE_URL:', process.env.DATABASE_URL ? process.env.DATABASE_URL.replace(/:[^:@]+@/, ':***@') : 'MISSING');
+    console.error('[Server] DATABASE_SSL:', process.env.DATABASE_SSL || 'not set');
+    console.error('[Server] Computed SSL option:', JSON.stringify(require('./database').pool?.options?.ssl));
+    console.error('[Server] Запускаюсь без БД — API будет возвращать ошибки до перезапуска.');
   }
 
   try {

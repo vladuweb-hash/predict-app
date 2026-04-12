@@ -1101,7 +1101,7 @@ async function createDuel() {
 
 function duelInviteLink(code) {
   const name = (botName || 'your_bot').replace(/^@/, '');
-  return `https://t.me/${name}?startapp=duel_${code}`;
+  return `https://t.me/${name}/Predict?startapp=duel_${code}`;
 }
 
 function shareDuel(link) {
@@ -1417,14 +1417,14 @@ async function loadProfile() {
 function shareInvite() {
   const text = '🎯 Предскажи курсы крипты, валют и золота — выигрывай подарки! За первый раунд друга — +1 билет тебе в розыгрыш.';
   const name = botName || 'your_bot';
-  const link = `https://t.me/${name}?startapp=ref_${currentUser.telegram_id}`;
+  const link = `https://t.me/${name}/Predict?startapp=ref_${currentUser.telegram_id}`;
   const url = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
   window.open(url, '_blank');
 }
 
 function shareFriendLink() {
   const name = botName || 'your_bot';
-  const link = `https://t.me/${name}?startapp=friend_${currentUser.telegram_id}`;
+  const link = `https://t.me/${name}/Predict?startapp=friend_${currentUser.telegram_id}`;
   const text = '👥 Добавь меня в друзья в «Предскажи»!';
   const url = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
   window.open(url, '_blank');
@@ -1653,17 +1653,6 @@ function handleDeepLink() {
 
 auth().then(async () => {
   const deepStart = getTelegramStartParam();
-
-  // DEBUG: показать что получил фронтенд (убрать после отладки)
-  const _dbg = {
-    start_param: tg?.initDataUnsafe?.start_param ?? 'null',
-    query: window.location.search,
-    hash: window.location.hash?.slice(0, 80),
-    resolved: deepStart || '(empty)',
-  };
-  console.log('[DeepLink DEBUG]', JSON.stringify(_dbg));
-  if (deepStart) toast('Link: ' + deepStart);
-  else toast('No startapp param. URL: ' + window.location.href.slice(0, 100));
 
   const hasDuelLink = deepStart.startsWith('duel_');
   const hasFriendLink = deepStart.startsWith('friend_');

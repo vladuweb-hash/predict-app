@@ -303,7 +303,7 @@ a{color:var(--accent2);text-decoration:none}
     <div class="nav-btn" onclick="showTab('friends')"><span class="icon">👥</span>Друзья</div>
     <div class="nav-btn" onclick="showTab('profile')"><span class="icon">👤</span>Профиль</div>
   </div>
-  <div id="buildMarker" class="nav-build" title="Если не совпадает с версией на сервере — открой приложение заново из бота">сборка 2.6.0</div>
+  <div id="buildMarker" class="nav-build" title="Если не совпадает с версией на сервере — открой приложение заново из бота">сборка 2.6.1</div>
 </div>
 <div class="toast" id="toast"></div>
 <div class="popup-overlay" id="premiumPopup">
@@ -1434,8 +1434,6 @@ async function loadFriendsTab() {
 // --- PROFILE ---
 
 const AVATAR_OPTIONS = ['😎','🤠','🦊','🐺','🦁','🐲','🦅','🐬','🎯','🔥','💎','⚡','🌟','👑','🎮','🏆','🦉','🐦','🗿','🏛️','🔮','📜','✨','🎖️','🏃','📢','👥','🤖'];
-const FAV_ASSET_OPTIONS = ['BTC','ETH','BNB','SOL','XRP','DOGE','TON','USD/RUB','EUR/USD'];
-const STRATEGY_OPTIONS = [{id:'bull',emoji:'🐂',label:'Бык'},{id:'bear',emoji:'🐻',label:'Медведь'},{id:'neutral',emoji:'⚖️',label:'Нейтрал'}];
 const FRAME_OPTIONS = [
   {id:'',label:'Нет',css:''},
   {id:'gold',label:'Золото',css:'box-shadow:0 0 0 3px #ffd700,0 0 12px rgba(255,215,0,.5)'},
@@ -1445,7 +1443,7 @@ const FRAME_OPTIONS = [
   {id:'purple',label:'Аметист',css:'box-shadow:0 0 0 3px #9b59b6,0 0 12px rgba(155,89,182,.5)'},
   {id:'rainbow',label:'Радуга',css:'box-shadow:0 0 0 3px #ff6b6b,0 0 6px #ffd93d,0 0 12px #6bcb77,0 0 18px #4d96ff'},
 ];
-const PROFILE_FIELDS_TOTAL = 6;
+const PROFILE_FIELDS_TOTAL = 4;
 const POINTS_PER_FIELD = 15;
 
 function getFrameCss(frameId) {
@@ -1520,12 +1518,9 @@ async function loadProfile() {
   const avatarFontStyle = u.avatar_emoji ? 'font-size:36px' : '';
   const frameCss = getFrameCss(u.profile_frame || '');
 
-  const filled = [u.bio, u.avatar_emoji, u.title, u.fav_asset, u.strategy, u.profile_frame].filter(Boolean).length;
+  const filled = [u.bio, u.avatar_emoji, u.title, u.profile_frame].filter(Boolean).length;
   const pct = Math.round(filled / PROFILE_FIELDS_TOTAL * 100);
   const bonusPts = filled * POINTS_PER_FIELD;
-
-  const stratObj = STRATEGY_OPTIONS.find(s => s.id === u.strategy);
-  const stratLabel = stratObj ? `${stratObj.emoji} ${stratObj.label}` : '';
 
   const achHtml = (data.achievementDefs || []).map(def => {
     const unlocked = data.achievements?.some(a => a.type === def.type);
@@ -1535,14 +1530,6 @@ async function loadProfile() {
       <div style="font-size:9px;color:var(--text2);margin-top:2px">${def.desc}</div>
     </div>`;
   }).join('');
-
-  const assetPicker = FAV_ASSET_OPTIONS.map(a =>
-    `<div class="title-pick${a === u.fav_asset ? ' active' : ''}" onclick="updateProfileField('fav_asset','${a}')">${a}</div>`
-  ).join('');
-
-  const stratPicker = STRATEGY_OPTIONS.map(s =>
-    `<div class="title-pick${s.id === u.strategy ? ' active' : ''}" onclick="updateProfileField('strategy','${s.id}')">${s.emoji} ${s.label}</div>`
-  ).join('');
 
   const framePicker = FRAME_OPTIONS.map(f =>
     `<div class="frame-pick${f.id === (u.profile_frame || '') ? ' active' : ''}" onclick="updateProfileField('profile_frame','${f.id}')">
@@ -1558,7 +1545,6 @@ async function loadProfile() {
       ${u.title ? `<div style="font-size:12px;color:var(--accent);font-weight:600;cursor:pointer" onclick="openTitlePicker()">${u.title}</div>` : `<div style="font-size:12px;color:var(--text2);cursor:pointer" onclick="openTitlePicker()">+ выбрать титул</div>`}
       ${u.username ? `<div style="color:var(--text2);font-size:13px">@${u.username}</div>` : ''}
       <div style="color:var(--text2);font-size:13px;margin-top:4px;cursor:pointer;${u.bio ? '' : 'opacity:0.5'}" onclick="promptBio()">${u.bio ? escapeHtml(u.bio) : '✏️ Добавить статус'}</div>
-      ${stratLabel || u.fav_asset ? `<div style="font-size:12px;color:var(--text2);margin-top:2px">${stratLabel}${stratLabel && u.fav_asset ? ' · ' : ''}${u.fav_asset ? `❤️ ${u.fav_asset}` : ''}</div>` : ''}
     </div>
 
     <div id="avatarPickerArea"></div>
@@ -1576,25 +1562,7 @@ async function loadProfile() {
         <div class="pf-chip${u.avatar_emoji ? ' done' : ''}" onclick="showAvatarPicker('${u.avatar_emoji || ''}')">${u.avatar_emoji ? '✅' : '○'} Аватарка</div>
         <div class="pf-chip${u.bio ? ' done' : ''}" onclick="promptBio()">${u.bio ? '✅' : '○'} Статус</div>
         <div class="pf-chip${u.title ? ' done' : ''}" onclick="openTitlePicker()">${u.title ? '✅' : '○'} Титул</div>
-        <div class="pf-chip${u.fav_asset ? ' done' : ''}" onclick="togglePicker('assetPickerArea')">${u.fav_asset ? '✅' : '○'} Актив</div>
-        <div class="pf-chip${u.strategy ? ' done' : ''}" onclick="togglePicker('stratPickerArea')">${u.strategy ? '✅' : '○'} Стратегия</div>
         <div class="pf-chip${u.profile_frame ? ' done' : ''}" onclick="togglePicker('framePickerArea')">${u.profile_frame ? '✅' : '○'} Рамка</div>
-      </div>
-    </div>
-
-    <div id="assetPickerArea" style="display:none">
-      <div class="card" style="padding:12px;margin-bottom:12px">
-        <div style="font-size:13px;font-weight:600;margin-bottom:8px">❤️ Любимый актив</div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px">${assetPicker}</div>
-        <button class="btn btn-outline" style="margin-top:10px;width:100%" onclick="updateProfileField('fav_asset','')">Сбросить</button>
-      </div>
-    </div>
-
-    <div id="stratPickerArea" style="display:none">
-      <div class="card" style="padding:12px;margin-bottom:12px">
-        <div style="font-size:13px;font-weight:600;margin-bottom:8px">📊 Твоя стратегия</div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px">${stratPicker}</div>
-        <button class="btn btn-outline" style="margin-top:10px;width:100%" onclick="updateProfileField('strategy','')">Сбросить</button>
       </div>
     </div>
 
@@ -1660,8 +1628,6 @@ async function showUserProfile(tid) {
   const avatarDisplay = u.avatar_emoji || (u.first_name || 'U')[0].toUpperCase();
   const avatarFontStyle = u.avatar_emoji ? 'font-size:36px' : '';
   const frameCss = getFrameCss(u.profile_frame || '');
-  const stratObj = STRATEGY_OPTIONS.find(s => s.id === u.strategy);
-  const stratLabel = stratObj ? `${stratObj.emoji} ${stratObj.label}` : '';
 
   const achHtml = (data.achievementDefs || []).map(def => {
     const unlocked = data.achievements?.some(a => a.type === def.type);
@@ -1679,7 +1645,6 @@ async function showUserProfile(tid) {
       ${u.title ? `<div style="font-size:12px;color:var(--accent);font-weight:600">${u.title}</div>` : ''}
       ${u.username ? `<div style="color:var(--text2);font-size:13px">@${u.username}</div>` : ''}
       ${u.bio ? `<div style="color:var(--text2);font-size:13px;margin-top:4px">${escapeHtml(u.bio)}</div>` : ''}
-      ${stratLabel || u.fav_asset ? `<div style="font-size:12px;color:var(--text2);margin-top:2px">${stratLabel}${stratLabel && u.fav_asset ? ' · ' : ''}${u.fav_asset ? `❤️ ${u.fav_asset}` : ''}</div>` : ''}
     </div>
 
     <div class="card" style="text-align:center;padding:16px;margin-bottom:12px;border:1px solid rgba(255,215,0,.35);background:rgba(255,215,0,.08)">

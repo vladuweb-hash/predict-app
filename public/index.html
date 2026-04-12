@@ -210,6 +210,13 @@ a{color:var(--accent2);text-decoration:none}
 .ach-item .ach-icon{font-size:24px}
 .ach-item .ach-name{font-size:10px;color:var(--text2);margin-top:4px;line-height:1.2}
 
+.av-pick{width:40px;height:40px;font-size:24px;display:flex;align-items:center;justify-content:center;background:var(--bg2);border-radius:10px;cursor:pointer;border:2px solid transparent;transition:.15s}
+.av-pick:active{transform:scale(.9)}
+.av-pick.active{border-color:var(--accent);box-shadow:0 0 8px rgba(0,122,255,.4)}
+.title-pick{padding:6px 14px;background:var(--bg2);border-radius:10px;font-size:13px;cursor:pointer;border:2px solid transparent;transition:.15s}
+.title-pick:active{transform:scale(.95)}
+.title-pick.active{border-color:var(--accent);color:var(--accent);font-weight:600}
+
 /* Confetti */
 .confetti-overlay{position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:200;overflow:hidden}
 .confetti-piece{position:absolute;width:10px;height:10px;animation:confetti-fall 3s ease-out forwards}
@@ -243,6 +250,8 @@ a{color:var(--accent2);text-decoration:none}
 .lb-rank{font-size:20px;min-width:36px;text-align:center;line-height:1.15;flex-shrink:0}
 .lb-name-wrap{flex:1;min-width:0}
 .lb-name{font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lb-av{font-size:22px;flex-shrink:0}
+.lb-title{font-size:11px;color:var(--accent);font-weight:500;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lb-sub{font-size:11px;color:var(--text2);line-height:1.35;padding-right:2px}
 .lb-pts{flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;line-height:1.05;padding:4px 10px;border-radius:10px;background:rgba(255,215,0,.12);border:1px solid rgba(255,215,0,.35)}
 .lb-pts-num{font-size:17px;font-weight:800;color:var(--gold)}
@@ -285,7 +294,7 @@ a{color:var(--accent2);text-decoration:none}
     <div class="nav-btn" onclick="showTab('friends')"><span class="icon">👥</span>Друзья</div>
     <div class="nav-btn" onclick="showTab('profile')"><span class="icon">👤</span>Профиль</div>
   </div>
-  <div id="buildMarker" class="nav-build" title="Если не совпадает с версией на сервере — открой приложение заново из бота">сборка 2.4.0</div>
+  <div id="buildMarker" class="nav-build" title="Если не совпадает с версией на сервере — открой приложение заново из бота">сборка 2.5.0</div>
 </div>
 <div class="toast" id="toast"></div>
 <div class="popup-overlay" id="premiumPopup">
@@ -1292,9 +1301,11 @@ async function loadRatingWeekly() {
     for (const e of data.board) {
       const medal = e.rank === 1 ? '🥇' : e.rank === 2 ? '🥈' : e.rank === 3 ? '🥉' : `${e.rank}.`;
       const click = e.tid ? `onclick="showUserProfile(${e.tid})" style="cursor:pointer"` : '';
+      const av = e.avatar_emoji || '';
       html += `<div class="champ-lb-row${e.isMe ? ' me' : ''}" ${click}>
         <div class="champ-lb-place">${medal}</div>
-        <div class="champ-lb-name">${e.name}</div>
+        ${av ? `<div class="lb-av">${av}</div>` : ''}
+        <div class="champ-lb-name">${e.name}${e.title ? ` <span class="lb-title">${escapeHtml(e.title)}</span>` : ''}</div>
         <div class="champ-lb-score">${e.points} оч.</div>
       </div>`;
     }
@@ -1318,14 +1329,18 @@ async function loadRatingGlobal() {
   const rows = (data.board || []).map((row) => {
     const pts = coalesceLeaderboardRating(row);
     const click = row.tid ? `onclick="showUserProfile(${row.tid})" style="cursor:pointer"` : '';
+    const av = row.avatar_emoji || '';
     return `
     <div class="lb-row${row.isMe ? ' lb-me' : ''}" role="listitem" ${click}>
       <div class="lb-row-head">
         <div class="lb-rank">${medal(row.rank)}</div>
-        <div class="lb-name-wrap"><div class="lb-name">${escapeHtml(row.name)}</div></div>
+        ${av ? `<div class="lb-av">${av}</div>` : ''}
+        <div class="lb-name-wrap">
+          <div class="lb-name">${escapeHtml(row.name)}</div>
+          ${row.title ? `<div class="lb-title">${escapeHtml(row.title)}</div>` : ''}
+        </div>
         <div class="lb-pts"><span class="lb-pts-num">${pts}</span><span class="lb-pts-lbl">очки</span></div>
       </div>
-      <div class="lb-sub">${row.total_5of5} идеал. · серия ${row.best_streak} · ${row.duel_wins} побед · ${row.total_rounds} раундов</div>
     </div>`;
   }).join('');
 
@@ -1388,10 +1403,12 @@ async function loadFriendsTab() {
   } else {
     const sorted = friends.slice().sort((a, b) => (b.rating || 0) - (a.rating || 0));
     sorted.forEach((f, i) => {
+      const fav = f.avatar_emoji || `${i + 1}`;
+      const favStyle = f.avatar_emoji ? 'font-size:22px' : 'font-size:13px;font-weight:800';
       html += `<div class="fr-row" onclick="showUserProfile(${f.telegram_id})" style="cursor:pointer">
-        <div class="fr-avatar" style="font-size:13px;font-weight:800">${i + 1}</div>
+        <div class="fr-avatar" style="${favStyle}">${fav}</div>
         <div class="fr-info">
-          <div class="fr-name">${escapeHtml(f.name)}</div>
+          <div class="fr-name">${escapeHtml(f.name)}${f.title ? ` <span style="font-size:11px;color:var(--accent)">${escapeHtml(f.title)}</span>` : ''}</div>
           <div class="fr-rating">⭐ ${f.rating || 0} очков</div>
         </div>
         <div class="fr-actions">
@@ -1406,6 +1423,56 @@ async function loadFriendsTab() {
 
 // --- PROFILE ---
 
+const AVATAR_OPTIONS = ['😎','🤠','🦊','🐺','🦁','🐲','🦅','🐬','🎯','🔥','💎','⚡','🌟','👑','🎮','🏆','🦉','🐦','🗿','🏛️','🔮','📜','✨','🎖️','🏃','📢','👥','🤖'];
+
+async function updateProfileField(field, value) {
+  const r = await apiPost('/api/profile/update', { [field]: value });
+  if (r.ok) { toast('Сохранено!'); loadProfile(); }
+  else toast(r.error || 'Ошибка');
+}
+
+function showAvatarPicker(current) {
+  const grid = AVATAR_OPTIONS.map(e =>
+    `<div class="av-pick${e === current ? ' active' : ''}" onclick="updateProfileField('avatar_emoji','${e}')">${e}</div>`
+  ).join('');
+  content.querySelector('#avatarPickerArea').innerHTML = `
+    <div class="card" style="padding:12px;margin-bottom:12px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px">Выбери аватарку</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center">${grid}</div>
+      <button class="btn btn-outline" style="margin-top:10px;width:100%" onclick="updateProfileField('avatar_emoji','')">Сбросить</button>
+    </div>`;
+}
+
+function showTitlePicker(current, achievements, defs) {
+  const unlocked = achievements.map(a => {
+    const d = defs.find(dd => dd.type === a.type);
+    return d?.badge;
+  }).filter(Boolean);
+  const unique = [...new Set(unlocked)];
+  if (unique.length === 0) { toast('Открой достижения чтобы получить титулы'); return; }
+  const opts = unique.map(b =>
+    `<div class="title-pick${b === current ? ' active' : ''}" onclick="updateProfileField('title','${b}')">${b}</div>`
+  ).join('');
+  content.querySelector('#titlePickerArea').innerHTML = `
+    <div class="card" style="padding:12px;margin-bottom:12px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px">Выбери титул</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${opts}</div>
+      <button class="btn btn-outline" style="margin-top:10px;width:100%" onclick="updateProfileField('title','')">Убрать титул</button>
+    </div>`;
+}
+
+function openTitlePicker() {
+  const d = window.profileData;
+  if (!d) return;
+  showTitlePicker(d.user?.title || '', d.achievements || [], d.achievementDefs || []);
+}
+
+function promptBio() {
+  const cur = window.profileData?.user?.bio || '';
+  const val = prompt('Статус (до 60 символов):', cur);
+  if (val !== null) updateProfileField('bio', val.slice(0, 60));
+}
+
 async function loadProfile() {
   content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
 
@@ -1413,7 +1480,8 @@ async function loadProfile() {
   if (!data.ok) { content.innerHTML = '<div class="card">Ошибка загрузки</div>'; return; }
 
   const u = data.user;
-  const premium = data.premium;
+  const avatarDisplay = u.avatar_emoji || (u.first_name || 'U')[0].toUpperCase();
+  const avatarStyle = u.avatar_emoji ? 'font-size:36px' : '';
 
   const achHtml = (data.achievementDefs || []).map(def => {
     const unlocked = data.achievements?.some(a => a.type === def.type);
@@ -1426,16 +1494,20 @@ async function loadProfile() {
 
   content.innerHTML = `
     <div class="profile-header">
-      <div class="avatar">${(u.first_name || 'U')[0].toUpperCase()}</div>
+      <div class="avatar" style="${avatarStyle};cursor:pointer" onclick="showAvatarPicker('${u.avatar_emoji || ''}')">${avatarDisplay}</div>
       <div class="profile-name">${u.first_name || 'Игрок'}</div>
+      ${u.title ? `<div style="font-size:12px;color:var(--accent);font-weight:600;cursor:pointer" onclick="openTitlePicker()">${u.title}</div>` : `<div style="font-size:12px;color:var(--text2);cursor:pointer" onclick="openTitlePicker()">+ выбрать титул</div>`}
       ${u.username ? `<div style="color:var(--text2);font-size:13px">@${u.username}</div>` : ''}
+      <div style="color:var(--text2);font-size:13px;margin-top:4px;cursor:pointer;${u.bio ? '' : 'opacity:0.5'}" onclick="promptBio()">${u.bio ? escapeHtml(u.bio) : '✏️ Добавить статус'}</div>
     </div>
 
+    <div id="avatarPickerArea"></div>
+    <div id="titlePickerArea"></div>
+
     <div class="card" style="text-align:center;padding:16px;margin-bottom:12px;border:1px solid rgba(255,215,0,.35);background:rgba(255,215,0,.08)">
-      <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Рейтинг (очки)</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Рейтинг</div>
       <div style="font-size:28px;font-weight:800;color:var(--gold)">${data.rating != null && data.rating !== '' ? data.rating : coalesceLeaderboardRating(u)}</div>
-      ${data.leaderboardRank != null ? `<div style="font-size:13px;color:var(--text2);margin-top:8px">Место в общем топе: <strong style="color:var(--text)">#${data.leaderboardRank}</strong>${data.totalPlayers != null ? ` из ${data.totalPlayers}` : ''}</div>` : ''}
-      <button type="button" class="btn btn-outline" style="margin-top:12px" onclick="showTab('rating')">🏆 Рейтинг</button>
+      ${data.leaderboardRank != null ? `<div style="font-size:13px;color:var(--text2);margin-top:8px">#${data.leaderboardRank} из ${data.totalPlayers || '—'}</div>` : ''}
     </div>
 
     <div class="stats-grid">
@@ -1446,12 +1518,12 @@ async function loadProfile() {
       <div class="stat-item"><div class="val">${u.duel_losses || 0}</div><div class="lbl">Поражений</div></div>
     </div>
 
-
     <div class="achievements-title">Достижения (${data.achievements?.length || 0}/${(data.achievementDefs || []).length})</div>
     <div class="ach-grid">${achHtml}</div>
 
     <button class="btn btn-outline" style="margin-top:20px" onclick="showTab('play')">🎯 Играть</button>`;
 
+  window.profileData = data;
   updateRatingStrip({
     rating: data.rating,
     leaderboardRank: data.leaderboardRank,
@@ -1484,6 +1556,9 @@ async function showUserProfile(tid) {
   if (!data.ok) { content.innerHTML = '<div class="card">Профиль не найден</div>'; return; }
 
   const u = data.user;
+  const avatarDisplay = u.avatar_emoji || (u.first_name || 'U')[0].toUpperCase();
+  const avatarStyle = u.avatar_emoji ? 'font-size:36px' : '';
+
   const achHtml = (data.achievementDefs || []).map(def => {
     const unlocked = data.achievements?.some(a => a.type === def.type);
     return `<div class="ach-item ${unlocked ? 'unlocked' : ''}" onclick="toast('${unlocked ? '✅' : '🔒'} ${def.title}: ${def.desc}')">
@@ -1495,15 +1570,17 @@ async function showUserProfile(tid) {
 
   content.innerHTML = `
     <div class="profile-header">
-      <div class="avatar">${(u.first_name || 'U')[0].toUpperCase()}</div>
+      <div class="avatar" style="${avatarStyle}">${avatarDisplay}</div>
       <div class="profile-name">${u.first_name || 'Игрок'}</div>
+      ${u.title ? `<div style="font-size:12px;color:var(--accent);font-weight:600">${u.title}</div>` : ''}
       ${u.username ? `<div style="color:var(--text2);font-size:13px">@${u.username}</div>` : ''}
+      ${u.bio ? `<div style="color:var(--text2);font-size:13px;margin-top:4px">${escapeHtml(u.bio)}</div>` : ''}
     </div>
 
     <div class="card" style="text-align:center;padding:16px;margin-bottom:12px;border:1px solid rgba(255,215,0,.35);background:rgba(255,215,0,.08)">
       <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Рейтинг</div>
       <div style="font-size:28px;font-weight:800;color:var(--gold)">${data.rating ?? 0}</div>
-      ${data.leaderboardRank != null ? `<div style="font-size:13px;color:var(--text2);margin-top:8px">Место: <strong style="color:var(--text)">#${data.leaderboardRank}</strong> из ${data.totalPlayers || '—'}</div>` : ''}
+      ${data.leaderboardRank != null ? `<div style="font-size:13px;color:var(--text2);margin-top:8px">#${data.leaderboardRank} из ${data.totalPlayers || '—'}</div>` : ''}
     </div>
 
     <div class="stats-grid">

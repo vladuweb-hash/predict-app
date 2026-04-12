@@ -501,6 +501,8 @@ app.get('/api/friends', authMiddleware, async (req, res) => {
       best_streak: f.best_streak ?? 0,
       duel_wins: f.duel_wins ?? 0,
       total_rounds: f.total_rounds ?? 0,
+      avatar_emoji: f.avatar_emoji || '',
+      title: f.title || '',
     }));
     const safeReq = requests.map(r => ({
       telegram_id: r.telegram_id,
@@ -608,6 +610,37 @@ app.get('/api/profile', authMiddleware, async (req, res) => {
   }
 });
 
+app.post('/api/profile/update', authMiddleware, async (req, res) => {
+  try {
+    const user = await db.getUser(req.tgUser.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const { bio, avatar_emoji, title } = req.body;
+
+    if (bio !== undefined) {
+      user.bio = String(bio).slice(0, 60);
+    }
+    if (avatar_emoji !== undefined) {
+      const AVATARS = ['😎','🤠','🦊','🐺','🦁','🐲','🦅','🐬','🎯','🔥','💎','⚡','🌟','👑','🎮','🏆','🦉','🐦','🗿','🏛️','🔮','📜','✨','🎖️','🏃','📢','👥','🤖'];
+      user.avatar_emoji = AVATARS.includes(avatar_emoji) ? avatar_emoji : '';
+    }
+    if (title !== undefined) {
+      const achievements = await db.getAchievements(user.telegram_id);
+      const unlockedBadges = achievements.map(a => {
+        const def = db.ACHIEVEMENT_DEFS.find(d => d.type === a.type);
+        return def?.badge;
+      }).filter(Boolean);
+      user.title = (title === '' || unlockedBadges.includes(title)) ? title : user.title;
+    }
+
+    await db.saveUser(user);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[ProfileUpdate]', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 app.get('/api/profile/:id', async (req, res) => {
   try {
     const targetId = Number(req.params.id);
@@ -628,6 +661,9 @@ app.get('/api/profile/:id', async (req, res) => {
         best_streak: user.best_streak,
         duel_wins: user.duel_wins,
         duel_losses: user.duel_losses,
+        bio: user.bio || '',
+        avatar_emoji: user.avatar_emoji || '',
+        title: user.title || '',
       },
       achievements,
       achievementDefs: db.ACHIEVEMENT_DEFS,
@@ -675,6 +711,8 @@ app.get('/api/leaderboard', async (req, res) => {
         best_streak: row.best_streak ?? 0,
         duel_wins: row.duel_wins ?? 0,
         total_rounds: row.total_rounds ?? 0,
+        avatar_emoji: row.avatar_emoji || '',
+        title: row.title || '',
         isMe,
       };
       if (myId != null && !isMe) entry.tid = Number(row.telegram_id);
@@ -714,7 +752,7 @@ app.get('/api/leaderboard/weekly', authMiddleware, async (req, res) => {
 
     const board = raw.map((row, i) => {
       const isMe = Number(row.telegram_id) === myId;
-      const entry = { rank: i + 1, name: leaderboardDisplayName(row), points: row.total_pts, isMe };
+      const entry = { rank: i + 1, name: leaderboardDisplayName(row), points: row.total_pts, avatar_emoji: row.avatar_emoji || '', title: row.title || '', isMe };
       if (!isMe) entry.tid = Number(row.telegram_id);
       return entry;
     });

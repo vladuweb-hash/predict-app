@@ -260,6 +260,9 @@ async function initDB() {
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by BIGINT',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS referrer_reward_given BOOLEAN DEFAULT false',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ DEFAULT NOW()',
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT DEFAULT ''",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_emoji TEXT DEFAULT ''",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS title TEXT DEFAULT ''",
     'ALTER TABLE duels ADD COLUMN IF NOT EXISTS stake INTEGER DEFAULT 0',
     'ALTER TABLE duels ADD COLUMN IF NOT EXISTS stake_paid BOOLEAN DEFAULT false',
   ];
@@ -660,11 +663,13 @@ async function saveUser(u) {
   await pool.query(`
     UPDATE users SET username=$1, first_name=$2, is_premium=$3, premium_until=$4,
       streak_5of5=$5, best_streak=$6, total_rounds=$7, total_5of5=$8,
-      duel_wins=$9, duel_losses=$10, duel_draws=$11, notifications=$12, chat_id=$13
+      duel_wins=$9, duel_losses=$10, duel_draws=$11, notifications=$12, chat_id=$13,
+      bio=$15, avatar_emoji=$16, title=$17
     WHERE telegram_id=$14
   `, [u.username, u.first_name, u.is_premium, u.premium_until,
       u.streak_5of5, u.best_streak, u.total_rounds, u.total_5of5,
-      u.duel_wins, u.duel_losses, u.duel_draws, u.notifications, u.chat_id, u.telegram_id]);
+      u.duel_wins, u.duel_losses, u.duel_draws, u.notifications, u.chat_id, u.telegram_id,
+      u.bio || '', u.avatar_emoji || '', u.title || '']);
 }
 
 function isPremiumActive(user) {
@@ -1301,18 +1306,28 @@ async function drawRaffle(weekKey, prizeStars = 500) {
 // --- Achievements ---
 
 const ACHIEVEMENT_DEFS = [
-  { type: 'first_round', emoji: '🎯', title: 'Первый раунд', desc: 'Сыграй первый раз' },
-  { type: 'sniper', emoji: '🎯', title: 'Снайпер', desc: 'Первый 5/5' },
-  { type: 'serial_sniper', emoji: '🔥', title: 'Серийный снайпер', desc: 'Серия 3× 5/5 подряд' },
-  { type: 'machine', emoji: '🤖', title: 'Машина', desc: 'Серия 5× 5/5 подряд' },
-  { type: 'duelist', emoji: '⚔️', title: 'Дуэлянт', desc: 'Первая победа в дуэли' },
-  { type: 'dominator', emoji: '👑', title: 'Доминатор', desc: '10 побед в дуэлях' },
-  { type: 'top_weekly', emoji: '🏆', title: 'В топе', desc: 'Выиграй розыгрыш недели' },
-  { type: 'night_owl', emoji: '🦉', title: 'Ночная сова', desc: 'Сыграй между 00:00–05:00' },
-  { type: 'veteran', emoji: '⚡', title: 'Ветеран', desc: '50 раундов сыграно' },
-  { type: 'legend', emoji: '🌟', title: 'Легенда', desc: '100 раундов сыграно' },
-  { type: 'first_stars', emoji: '🎁', title: 'Подарок', desc: 'Получи Telegram Gift' },
-  { type: 'streak_king', emoji: '💎', title: 'Король серий', desc: 'Серия 10× 5/5 подряд' },
+  { type: 'first_round', emoji: '🎯', title: 'Первый раунд', desc: 'Сыграй первый раз', badge: 'Новичок' },
+  { type: 'sniper', emoji: '🎯', title: 'Снайпер', desc: 'Первый 5/5', badge: 'Снайпер' },
+  { type: 'serial_sniper', emoji: '🔥', title: 'Серийный снайпер', desc: 'Серия 3× 5/5 подряд', badge: 'Огонь' },
+  { type: 'machine', emoji: '🤖', title: 'Машина', desc: 'Серия 5× 5/5 подряд', badge: 'Машина' },
+  { type: 'streak_king', emoji: '💎', title: 'Король серий', desc: 'Серия 10× 5/5 подряд', badge: 'Король серий' },
+  { type: 'duelist', emoji: '⚔️', title: 'Дуэлянт', desc: 'Первая победа в дуэли', badge: 'Дуэлянт' },
+  { type: 'dominator', emoji: '👑', title: 'Доминатор', desc: '10 побед в дуэлях', badge: 'Доминатор' },
+  { type: 'gladiator', emoji: '🏛️', title: 'Гладиатор', desc: '25 побед в дуэлях', badge: 'Гладиатор' },
+  { type: 'duel_legend', emoji: '⚡', title: 'Легенда арены', desc: '50 побед в дуэлях', badge: 'Легенда арены' },
+  { type: 'veteran', emoji: '🎖️', title: 'Ветеран', desc: '50 раундов сыграно', badge: 'Ветеран' },
+  { type: 'legend', emoji: '🌟', title: 'Легенда', desc: '100 раундов сыграно', badge: 'Легенда' },
+  { type: 'marathon', emoji: '🏃', title: 'Марафонец', desc: '250 раундов сыграно', badge: 'Марафонец' },
+  { type: 'titan', emoji: '🗿', title: 'Титан', desc: '500 раундов сыграно', badge: 'Титан' },
+  { type: 'night_owl', emoji: '🦉', title: 'Ночная сова', desc: 'Сыграй между 00:00–05:00', badge: 'Сова' },
+  { type: 'early_bird', emoji: '🐦', title: 'Ранняя пташка', desc: 'Сыграй между 05:00–07:00', badge: 'Пташка' },
+  { type: 'social', emoji: '👥', title: 'Душа компании', desc: 'Добавь 3 друзей', badge: 'Душа компании' },
+  { type: 'influencer', emoji: '📢', title: 'Инфлюенсер', desc: 'Пригласи 5 друзей по реферальной ссылке', badge: 'Инфлюенсер' },
+  { type: 'perfectionist', emoji: '✨', title: 'Перфекционист', desc: '10 раундов 5/5', badge: 'Перфекционист' },
+  { type: 'oracle', emoji: '🔮', title: 'Оракул', desc: '25 раундов 5/5', badge: 'Оракул' },
+  { type: 'prophet', emoji: '📜', title: 'Пророк', desc: '50 раундов 5/5', badge: 'Пророк' },
+  { type: 'top_weekly', emoji: '🏆', title: 'В топе', desc: 'Топ-3 недели', badge: 'Топ недели' },
+  { type: 'first_stars', emoji: '🎁', title: 'Подарок', desc: 'Получи Telegram Gift', badge: 'Везунчик' },
 ];
 
 async function getAchievements(userId) {
@@ -1336,19 +1351,36 @@ async function checkAchievements(userId) {
   const user = await getUser(userId);
   if (!user) return [];
   const granted = [];
+  const g = async (type) => { const r = await grantAchievement(userId, type); if (r) granted.push(r); };
 
-  if (user.total_rounds >= 1) { const r = await grantAchievement(userId, 'first_round'); if (r) granted.push(r); }
-  if (user.total_5of5 >= 1) { const r = await grantAchievement(userId, 'sniper'); if (r) granted.push(r); }
-  if (user.streak_5of5 >= 3) { const r = await grantAchievement(userId, 'serial_sniper'); if (r) granted.push(r); }
-  if (user.streak_5of5 >= 5) { const r = await grantAchievement(userId, 'machine'); if (r) granted.push(r); }
-  if (user.streak_5of5 >= 10) { const r = await grantAchievement(userId, 'streak_king'); if (r) granted.push(r); }
-  if (user.duel_wins >= 1) { const r = await grantAchievement(userId, 'duelist'); if (r) granted.push(r); }
-  if (user.duel_wins >= 10) { const r = await grantAchievement(userId, 'dominator'); if (r) granted.push(r); }
-  if (user.total_rounds >= 50) { const r = await grantAchievement(userId, 'veteran'); if (r) granted.push(r); }
-  if (user.total_rounds >= 100) { const r = await grantAchievement(userId, 'legend'); if (r) granted.push(r); }
+  if (user.total_rounds >= 1) await g('first_round');
+  if (user.total_5of5 >= 1) await g('sniper');
+  if (user.total_5of5 >= 10) await g('perfectionist');
+  if (user.total_5of5 >= 25) await g('oracle');
+  if (user.total_5of5 >= 50) await g('prophet');
+  if (user.streak_5of5 >= 3) await g('serial_sniper');
+  if (user.streak_5of5 >= 5) await g('machine');
+  if (user.streak_5of5 >= 10) await g('streak_king');
+  if (user.duel_wins >= 1) await g('duelist');
+  if (user.duel_wins >= 10) await g('dominator');
+  if (user.duel_wins >= 25) await g('gladiator');
+  if (user.duel_wins >= 50) await g('duel_legend');
+  if (user.total_rounds >= 50) await g('veteran');
+  if (user.total_rounds >= 100) await g('legend');
+  if (user.total_rounds >= 250) await g('marathon');
+  if (user.total_rounds >= 500) await g('titan');
 
   const hourMSK = (new Date().getUTCHours() + 3) % 24;
-  if (hourMSK >= 0 && hourMSK < 5) { const r = await grantAchievement(userId, 'night_owl'); if (r) granted.push(r); }
+  if (hourMSK >= 0 && hourMSK < 5) await g('night_owl');
+  if (hourMSK >= 5 && hourMSK < 7) await g('early_bird');
+
+  const friendData = await getFriends(userId);
+  if (friendData.length >= 3) await g('social');
+
+  const { rows: refs } = await pool.query(
+    'SELECT COUNT(*)::int AS c FROM users WHERE referred_by = $1 AND referrer_reward_given = true', [userId]
+  );
+  if ((refs[0]?.c || 0) >= 5) await g('influencer');
 
   return granted;
 }
@@ -1369,6 +1401,7 @@ function computeLeaderboardRating(u) {
 async function getLeaderboard() {
   const { rows } = await pool.query(
     `SELECT telegram_id, username, first_name, total_5of5, best_streak, duel_wins, total_rounds,
+      COALESCE(avatar_emoji,'') AS avatar_emoji, COALESCE(title,'') AS title,
       (COALESCE(total_5of5,0) * 140 + COALESCE(best_streak,0) * 35 + COALESCE(duel_wins,0) * 25
         + LEAST(COALESCE(total_rounds,0), ${LB_ROUND_CAP}))::int AS rating_score
      FROM users
@@ -1441,7 +1474,7 @@ async function getWeeklyLeaderboard(limit = 50) {
               COALESCE(r.pts, 0) + COALESCE(d.pts, 0) AS total_pts
        FROM round_scores r FULL OUTER JOIN duel_scores d ON r.user_id = d.user_id
      )
-     SELECT c.user_id AS telegram_id, u.username, u.first_name, c.total_pts
+     SELECT c.user_id AS telegram_id, u.username, u.first_name, COALESCE(u.avatar_emoji,'') AS avatar_emoji, COALESCE(u.title,'') AS title, c.total_pts
      FROM combined c JOIN users u ON u.telegram_id = c.user_id
      WHERE c.total_pts > 0
      ORDER BY c.total_pts DESC, u.telegram_id ASC
@@ -1503,6 +1536,7 @@ async function removeFriend(userId, friendId) {
 async function getFriends(userId) {
   const { rows } = await pool.query(
     `SELECT u.telegram_id, u.username, u.first_name, u.total_5of5, u.best_streak, u.duel_wins, u.total_rounds,
+       COALESCE(u.avatar_emoji,'') AS avatar_emoji, COALESCE(u.title,'') AS title,
        CASE WHEN f.user_id = $1 THEN f.friend_id ELSE f.user_id END AS fid
      FROM friendships f
      JOIN users u ON u.telegram_id = CASE WHEN f.user_id = $1 THEN f.friend_id ELSE f.user_id END

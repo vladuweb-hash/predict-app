@@ -196,8 +196,8 @@ async function resolveDuels() {
             const alreadyFriends = await db.areFriends(duel.creator_id, duel.opponent_id);
             if (!alreadyFriends) {
               const botName = await getBotUsername();
-              const creatorLink = `https://t.me/${botName}?startapp=friend_${duel.creator_id}`;
-              const opponentLink = `https://t.me/${botName}?startapp=friend_${duel.opponent_id}`;
+              const creatorLink = `https://t.me/${botName}/Predict?startapp=friend_${duel.creator_id}`;
+              const opponentLink = `https://t.me/${botName}/Predict?startapp=friend_${duel.opponent_id}`;
               if (oId) { try { await _bot.sendMessage(oId, '👥 Добавить соперника в друзья?', { reply_markup: { inline_keyboard: [[{ text: '➕ Добавить в друзья', url: creatorLink }]] } }); } catch (e) {} }
               if (cId) { try { await _bot.sendMessage(cId, '👥 Добавить соперника в друзья?', { reply_markup: { inline_keyboard: [[{ text: '➕ Добавить в друзья', url: opponentLink }]] } }); } catch (e) {} }
             }
@@ -281,16 +281,144 @@ async function sendReminders() {
   }
 }
 
+// --- Championship daily round creation & resolution ---
+
+async function createDailyChampRound() {
+  try {
+    const weekKey = db.getWeekKey();
+    const champ = await db.getChampionship(weekKey);
+    if (!champ || champ.status === 'finished' || champ.status === 'cancelled') return;
+
+    const dayNumber = db.getChampionshipDayNumber();
+    const existing = await db.getChampionshipRound(champ.id, dayNumber);
+    if (existing) return;
+
+    const entries = await db.getChampionshipEntries(champ.id);
+    if (entries.length === 0) return;
+
+    if (champ.status === 'open') {
+      await db.pool.query(`UPDATE championships SET status='active' WHERE id=$1`, [champ.id]);
+    }
+
+    const assets = db.pickRandomAssets(5);
+    const assetIds = assets.map(a => a.id);
+    const prices = await db.fetchCurrentPrices(assetIds);
+
+    const questions = [];
+    for (const a of assets) {
+      const price = prices[a.id];
+      if (!price) continue;
+      questions.push({ asset: a.id, asset_label: a.label, asset_emoji: a.emoji, price_at_start: price });
+      if (questions.length >= 5) break;
+    }
+
+    if (questions.length < 3) {
+      console.log('[Scheduler] Not enough prices for championship round');
+      return;
+    }
+
+    await db.createChampionshipRound(champ.id, dayNumber, questions);
+    console.log(`[Scheduler] Championship round day ${dayNumber} created (${questions.length} questions)`);
+
+    if (_bot) {
+      for (const entry of entries) {
+        const user = await db.getUser(entry.user_id);
+        const dmId = user && (user.chat_id || user.telegram_id);
+        if (dmId) {
+          try {
+            await _bot.sendMessage(dmId,
+              `🏆 Чемпионат — день ${dayNumber}!\n\nНовые вопросы уже доступны. Зайди и ответь!`,
+              playButton()
+            );
+          } catch (e) {}
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[Scheduler] createDailyChampRound error:', e.message);
+  }
+}
+
+async function resolveChampRounds() {
+  try {
+    const pending = await db.getPendingChampRounds();
+    if (pending.length === 0) return;
+    console.log(`[Scheduler] Resolving ${pending.length} championship round(s)...`);
+    for (const cr of pending) {
+      await db.resolveChampionshipRound(cr.id);
+      console.log(`[Scheduler] Champ round #${cr.id} resolved`);
+    }
+  } catch (e) {
+    console.error('[Scheduler] resolveChampRounds error:', e.message);
+  }
+}
+
+async function weeklyChampFinish() {
+  try {
+    const now = new Date();
+    if (now.getUTCDay() !== 0 || now.getUTCHours() !== 21) return;
+
+    const weekKey = db.getWeekKey();
+    const champ = await db.getChampionship(weekKey);
+    if (!champ || champ.status === 'finished' || champ.status === 'cancelled') return;
+
+    const result = await db.finishChampionship(champ.id);
+    if (!result) return;
+
+    if (result.cancelled && result.refund) {
+      console.log(`[Scheduler] Championship ${weekKey} cancelled — not enough players, refunding`);
+      if (_bot) {
+        for (const entry of result.entries) {
+          const user = await db.getUser(entry.user_id);
+          const dmId = user && (user.chat_id || user.telegram_id);
+          if (dmId) {
+            try {
+              await _bot.sendMessage(dmId,
+                `🏆 Чемпионат ${weekKey} отменён — не набралось ${champ.min_players} участников.\n` +
+                `Возврат ${champ.entry_fee}⭐ будет обработан.`
+              );
+            } catch (e) {}
+          }
+        }
+      }
+      return;
+    }
+
+    if (result.finished && _bot) {
+      console.log(`[Scheduler] Championship ${weekKey} finished! Winners: ${result.winners.length}`);
+      const allUsers = await db.getAllUsers();
+      let announcement = `🏆🏆🏆 ЧЕМПИОНАТ ${weekKey} ЗАВЕРШЁН!\n\nПризовой пул: ${champ.prize_pool}⭐\n\n`;
+      for (const w of result.winners) {
+        const medal = w.place === 1 ? '🥇' : w.place === 2 ? '🥈' : '🥉';
+        announcement += `${medal} ${w.place} место: ${w.first_name || w.username || 'Аноним'} — ${w.stars}⭐\n`;
+      }
+      announcement += `\nНовый чемпионат уже скоро!`;
+
+      for (const u of allUsers) {
+        const dmId = u.chat_id || u.telegram_id;
+        if (dmId) {
+          try { await _bot.sendMessage(dmId, announcement, playButton()); } catch (e) {}
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[Scheduler] weeklyChampFinish error:', e.message);
+  }
+}
+
 function start() {
   console.log('[Scheduler] Started (every 2 min)');
 
   setInterval(async () => {
     await resolveRounds();
     await resolveDuels();
+    await resolveChampRounds();
   }, 120000);
 
   setInterval(async () => {
     await weeklyRaffleCheck();
+    await weeklyChampFinish();
+    await createDailyChampRound();
     try { await db.cleanupStaleDuels(); } catch (e) { console.error('[Scheduler] cleanupStaleDuels:', e.message); }
   }, 3600000);
 
@@ -304,9 +432,13 @@ function start() {
   setTimeout(async () => {
     await resolveRounds();
     await resolveDuels();
-  }, 10000);
+    await resolveChampRounds();
+    await createDailyChampRound();
+  }, 15000);
 }
 
 module.exports = {
-  setBot, start, resolveRounds, resolvePendingRoundsForUser, resolveDuels, weeklyRaffleCheck, sendReminders,
+  setBot, start, resolveRounds, resolvePendingRoundsForUser, resolveDuels,
+  resolveChampRounds, createDailyChampRound, weeklyChampFinish,
+  weeklyRaffleCheck, sendReminders,
 };

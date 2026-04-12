@@ -133,6 +133,32 @@ bot.on('successful_payment', async (msg) => {
       );
     }
   }
+
+  // Championship entry payment
+  if (payload.startsWith('champ_')) {
+    const parts = payload.split('_');
+    const champId = parseInt(parts[1]);
+    const payUserId = parseInt(parts[2]);
+    if (champId && payUserId) {
+      const result = await db.joinChampionship(champId, payUserId);
+      if (result.ok) {
+        await bot.sendMessage(chatId, '🏆 Ты в чемпионате! Играй каждый день — набирай очки и борись за призовой пул!');
+      } else if (result.already) {
+        await bot.sendMessage(chatId, '🏆 Ты уже участвуешь в чемпионате!');
+      }
+    }
+  }
+
+  // Duel stake payment
+  if (payload.startsWith('duel_stake_')) {
+    const parts = payload.split('_');
+    const duelId = parseInt(parts[2]);
+    const payUserId = parseInt(parts[3]);
+    if (duelId && payUserId) {
+      await db.pool.query('UPDATE duels SET stake_paid=true WHERE id=$1', [duelId]);
+      await bot.sendMessage(chatId, '⚔️ Ставка принята! Дуэль начинается.');
+    }
+  }
 });
 
 bot.onText(/\/duel/, async (msg) => {

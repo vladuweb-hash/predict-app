@@ -177,6 +177,73 @@ async function initDB() {
       duel_id INTEGER NOT NULL REFERENCES duels(id) ON DELETE CASCADE,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS championships (
+      id SERIAL PRIMARY KEY,
+      week_key TEXT UNIQUE NOT NULL,
+      entry_fee INTEGER NOT NULL DEFAULT 50,
+      prize_pool INTEGER NOT NULL DEFAULT 0,
+      commission_pct INTEGER NOT NULL DEFAULT 10,
+      min_players INTEGER NOT NULL DEFAULT 5,
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      finished_at TIMESTAMPTZ
+    );
+
+    CREATE TABLE IF NOT EXISTS championship_entries (
+      id SERIAL PRIMARY KEY,
+      championship_id INTEGER NOT NULL REFERENCES championships(id),
+      user_id BIGINT NOT NULL,
+      total_score INTEGER DEFAULT 0,
+      rounds_played INTEGER DEFAULT 0,
+      joined_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(championship_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS championship_rounds (
+      id SERIAL PRIMARY KEY,
+      championship_id INTEGER NOT NULL REFERENCES championships(id),
+      day_number INTEGER NOT NULL,
+      resolve_after TIMESTAMPTZ,
+      is_resolved BOOLEAN DEFAULT false,
+      resolved_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(championship_id, day_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS championship_round_questions (
+      id SERIAL PRIMARY KEY,
+      champ_round_id INTEGER NOT NULL REFERENCES championship_rounds(id),
+      question_index INTEGER NOT NULL,
+      asset TEXT NOT NULL,
+      asset_label TEXT NOT NULL,
+      asset_emoji TEXT DEFAULT '',
+      price_at_start DOUBLE PRECISION NOT NULL,
+      price_at_resolve DOUBLE PRECISION,
+      correct_answer TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS championship_answers (
+      id SERIAL PRIMARY KEY,
+      championship_id INTEGER NOT NULL REFERENCES championships(id),
+      champ_round_id INTEGER NOT NULL REFERENCES championship_rounds(id),
+      user_id BIGINT NOT NULL,
+      question_index INTEGER NOT NULL,
+      answer TEXT NOT NULL,
+      is_correct BOOLEAN,
+      answered_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(champ_round_id, user_id, question_index)
+    );
+
+    CREATE TABLE IF NOT EXISTS championship_prizes (
+      id SERIAL PRIMARY KEY,
+      championship_id INTEGER NOT NULL REFERENCES championships(id),
+      user_id BIGINT NOT NULL,
+      place INTEGER NOT NULL,
+      stars_won INTEGER NOT NULL,
+      paid BOOLEAN DEFAULT false,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
   `);
 
   // Add missing columns to users table (for existing DBs created before v3)
@@ -196,6 +263,8 @@ async function initDB() {
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by BIGINT',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS referrer_reward_given BOOLEAN DEFAULT false',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ DEFAULT NOW()',
+    'ALTER TABLE duels ADD COLUMN IF NOT EXISTS stake INTEGER DEFAULT 0',
+    'ALTER TABLE duels ADD COLUMN IF NOT EXISTS stake_paid BOOLEAN DEFAULT false',
   ];
   for (const q of alterQueries) {
     try { await pool.query(q); } catch (e) { /* column already exists */ }
@@ -1444,9 +1513,269 @@ async function resetUser(telegramId) {
   }
 }
 
+// --- Championship ---
+
+async function getOrCreateChampionship(weekKey) {
+  const { rows } = await pool.query('SELECT * FROM championships WHERE week_key=$1', [weekKey]);
+  if (rows[0]) return rows[0];
+  const { rows: created } = await pool.query(
+    `INSERT INTO championships (week_key) VALUES ($1) RETURNING *`, [weekKey]
+  );
+  return created[0];
+}
+
+async function getChampionship(weekKey) {
+  const { rows } = await pool.query('SELECT * FROM championships WHERE week_key=$1', [weekKey]);
+  return rows[0] || null;
+}
+
+async function getChampionshipById(id) {
+  const { rows } = await pool.query('SELECT * FROM championships WHERE id=$1', [id]);
+  return rows[0] || null;
+}
+
+async function joinChampionship(championshipId, userId) {
+  const champ = await getChampionshipById(championshipId);
+  if (!champ) return { ok: false, error: 'Чемпионат не найден' };
+  if (champ.status !== 'open' && champ.status !== 'active') {
+    return { ok: false, error: 'Чемпионат уже завершён' };
+  }
+
+  const { rows: existing } = await pool.query(
+    'SELECT 1 FROM championship_entries WHERE championship_id=$1 AND user_id=$2',
+    [championshipId, userId]
+  );
+  if (existing.length > 0) return { ok: false, error: 'Ты уже участвуешь', already: true };
+
+  await pool.query(
+    'INSERT INTO championship_entries (championship_id, user_id) VALUES ($1, $2)',
+    [championshipId, userId]
+  );
+  await pool.query(
+    'UPDATE championships SET prize_pool = prize_pool + entry_fee WHERE id=$1',
+    [championshipId]
+  );
+  return { ok: true };
+}
+
+async function getChampionshipEntries(championshipId) {
+  const { rows } = await pool.query(
+    `SELECT ce.*, u.username, u.first_name
+     FROM championship_entries ce JOIN users u ON u.telegram_id = ce.user_id
+     WHERE ce.championship_id=$1
+     ORDER BY ce.total_score DESC, ce.rounds_played DESC`,
+    [championshipId]
+  );
+  return rows;
+}
+
+async function isChampionshipParticipant(championshipId, userId) {
+  const { rows } = await pool.query(
+    'SELECT 1 FROM championship_entries WHERE championship_id=$1 AND user_id=$2',
+    [championshipId, userId]
+  );
+  return rows.length > 0;
+}
+
+async function getChampionshipRound(championshipId, dayNumber) {
+  const { rows } = await pool.query(
+    'SELECT * FROM championship_rounds WHERE championship_id=$1 AND day_number=$2',
+    [championshipId, dayNumber]
+  );
+  return rows[0] || null;
+}
+
+async function createChampionshipRound(championshipId, dayNumber, questions) {
+  const existing = await getChampionshipRound(championshipId, dayNumber);
+  if (existing) return existing;
+
+  const resolveAfter = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+  const { rows } = await pool.query(
+    `INSERT INTO championship_rounds (championship_id, day_number, resolve_after)
+     VALUES ($1, $2, $3) RETURNING *`,
+    [championshipId, dayNumber, resolveAfter]
+  );
+  const cr = rows[0];
+
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i];
+    await pool.query(
+      `INSERT INTO championship_round_questions
+       (champ_round_id, question_index, asset, asset_label, asset_emoji, price_at_start)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [cr.id, i, q.asset, q.asset_label, q.asset_emoji, q.price_at_start]
+    );
+  }
+  return cr;
+}
+
+async function getChampRoundQuestions(champRoundId) {
+  const { rows } = await pool.query(
+    'SELECT * FROM championship_round_questions WHERE champ_round_id=$1 ORDER BY question_index',
+    [champRoundId]
+  );
+  return rows;
+}
+
+async function answerChampionshipQuestion(championshipId, champRoundId, userId, questionIndex, answer) {
+  if (!['up', 'down'].includes(answer)) return { ok: false, error: 'Invalid answer' };
+
+  try {
+    await pool.query(
+      `INSERT INTO championship_answers (championship_id, champ_round_id, user_id, question_index, answer)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [championshipId, champRoundId, userId, questionIndex, answer]
+    );
+  } catch (e) {
+    if (e.code === '23505') return { ok: false, error: 'Уже отвечено' };
+    throw e;
+  }
+
+  const { rows: countRows } = await pool.query(
+    'SELECT COUNT(*) as c FROM championship_answers WHERE champ_round_id=$1 AND user_id=$2',
+    [champRoundId, userId]
+  );
+  const { rows: totalRows } = await pool.query(
+    'SELECT COUNT(*) as c FROM championship_round_questions WHERE champ_round_id=$1',
+    [champRoundId]
+  );
+  const answered = parseInt(countRows[0].c);
+  const total = parseInt(totalRows[0].c);
+
+  return { ok: true, answered, total, is_complete: answered >= total };
+}
+
+async function getUserChampAnswers(champRoundId, userId) {
+  const { rows } = await pool.query(
+    'SELECT * FROM championship_answers WHERE champ_round_id=$1 AND user_id=$2 ORDER BY question_index',
+    [champRoundId, userId]
+  );
+  return rows;
+}
+
+async function resolveChampionshipRound(champRoundId) {
+  const { rows: crRows } = await pool.query('SELECT * FROM championship_rounds WHERE id=$1', [champRoundId]);
+  const cr = crRows[0];
+  if (!cr || cr.is_resolved) return null;
+
+  const questions = await getChampRoundQuestions(champRoundId);
+  const assetIds = questions.map(q => q.asset);
+  const prices = await fetchCurrentPrices(assetIds);
+
+  for (const q of questions) {
+    const currentPrice = prices[q.asset];
+    if (!currentPrice) continue;
+    const diff = currentPrice - q.price_at_start;
+    let correctAnswer;
+    if (Math.abs(diff / q.price_at_start) < DRAW_THRESHOLD) correctAnswer = 'draw';
+    else correctAnswer = diff > 0 ? 'up' : 'down';
+
+    await pool.query(
+      `UPDATE championship_round_questions SET price_at_resolve=$1, correct_answer=$2 WHERE id=$3`,
+      [currentPrice, correctAnswer, q.id]
+    );
+  }
+
+  const { rows: answers } = await pool.query(
+    'SELECT * FROM championship_answers WHERE champ_round_id=$1', [champRoundId]
+  );
+
+  const updatedQuestions = await getChampRoundQuestions(champRoundId);
+  const correctMap = {};
+  for (const q of updatedQuestions) correctMap[q.question_index] = q.correct_answer;
+
+  const userScores = {};
+  for (const a of answers) {
+    const correct = correctMap[a.question_index];
+    const isCorrect = correct === 'draw' || a.answer === correct;
+    await pool.query('UPDATE championship_answers SET is_correct=$1 WHERE id=$2', [isCorrect, a.id]);
+
+    if (!userScores[a.user_id]) userScores[a.user_id] = 0;
+    userScores[a.user_id] += isCorrect ? 20 : 5;
+  }
+
+  for (const [uid, score] of Object.entries(userScores)) {
+    await pool.query(
+      `UPDATE championship_entries SET total_score = total_score + $1, rounds_played = rounds_played + 1
+       WHERE championship_id=$2 AND user_id=$3`,
+      [score, cr.championship_id, uid]
+    );
+  }
+
+  await pool.query(
+    'UPDATE championship_rounds SET is_resolved=true, resolved_at=NOW() WHERE id=$1', [champRoundId]
+  );
+
+  return { resolved: true, userScores };
+}
+
+async function getPendingChampRounds() {
+  const { rows } = await pool.query(
+    `SELECT * FROM championship_rounds WHERE is_resolved=false AND resolve_after < NOW()`
+  );
+  return rows;
+}
+
+async function finishChampionship(championshipId) {
+  const champ = await getChampionshipById(championshipId);
+  if (!champ || champ.status === 'finished') return null;
+
+  const entries = await getChampionshipEntries(championshipId);
+  if (entries.length < champ.min_players) {
+    await pool.query(`UPDATE championships SET status='cancelled', finished_at=NOW() WHERE id=$1`, [championshipId]);
+    return { cancelled: true, refund: true, entries };
+  }
+
+  const commission = Math.floor(champ.prize_pool * champ.commission_pct / 100);
+  const distributable = champ.prize_pool - commission;
+
+  const prizes = [
+    { place: 1, pct: 50 },
+    { place: 2, pct: 25 },
+    { place: 3, pct: 15 },
+  ];
+
+  const winners = [];
+  for (const p of prizes) {
+    const entry = entries[p.place - 1];
+    if (!entry) continue;
+    const stars = Math.floor(distributable * p.pct / 100);
+    await pool.query(
+      `INSERT INTO championship_prizes (championship_id, user_id, place, stars_won) VALUES ($1,$2,$3,$4)`,
+      [championshipId, entry.user_id, p.place, stars]
+    );
+    winners.push({ user_id: entry.user_id, place: p.place, stars, username: entry.username, first_name: entry.first_name });
+  }
+
+  await pool.query(
+    `UPDATE championships SET status='finished', finished_at=NOW() WHERE id=$1`, [championshipId]
+  );
+
+  return { finished: true, winners, commission, entries };
+}
+
+async function getActiveChampionships() {
+  const { rows } = await pool.query(
+    `SELECT * FROM championships WHERE status IN ('open','active') ORDER BY created_at DESC`
+  );
+  return rows;
+}
+
+async function getChampionshipHistory(limit = 5) {
+  const { rows } = await pool.query(
+    `SELECT * FROM championships WHERE status IN ('finished','cancelled') ORDER BY finished_at DESC LIMIT $1`, [limit]
+  );
+  return rows;
+}
+
+function getChampionshipDayNumber() {
+  const now = new Date();
+  return now.getUTCDay() === 0 ? 7 : now.getUTCDay(); // Mon=1 ... Sun=7
+}
+
 module.exports = {
   pool, initDB, ASSETS, DRAW_THRESHOLD, ACHIEVEMENT_DEFS,
-  fetchCurrentPrices, fetchSparkline, getWeekKey, warmPriceCache, setCachedPrice,
+  fetchCurrentPrices, fetchSparkline, getWeekKey, warmPriceCache, setCachedPrice, pickRandomAssets,
   getUser, createUser, saveUser, isPremiumActive, getAllUsers, touchActivity, getInactiveUsers,
   canStartRound, createRound, getRound, getRoundQuestions, getActiveRound,
   answerRoundQuestion, resolveRound, getPendingRounds, getPendingRoundsForUser, getRecentRounds,
@@ -1457,4 +1786,9 @@ module.exports = {
   getAchievements, grantAchievement, checkAchievements, getLeaderboard, getLeaderboardRank, getUsersCount, computeLeaderboardRating, LB_ROUND_CAP,
   sendFriendRequest, acceptFriendRequest, removeFriend, getFriends, getFriendRequests, areFriends,
   resetUser,
+  getOrCreateChampionship, getChampionship, getChampionshipById, joinChampionship,
+  getChampionshipEntries, isChampionshipParticipant,
+  getChampionshipRound, createChampionshipRound, getChampRoundQuestions,
+  answerChampionshipQuestion, getUserChampAnswers, resolveChampionshipRound, getPendingChampRounds,
+  finishChampionship, getActiveChampionships, getChampionshipHistory, getChampionshipDayNumber,
 };

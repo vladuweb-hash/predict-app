@@ -158,6 +158,36 @@ a{color:var(--accent2);text-decoration:none}
 .raffle-stat .val{font-size:22px;font-weight:700}
 .raffle-stat .lbl{font-size:12px;color:var(--text2);margin-top:4px}
 
+/* Championship */
+.champ-hero{text-align:center;padding:24px 16px;background:linear-gradient(135deg,rgba(108,92,231,.15),rgba(253,203,110,.1));border-radius:16px;margin-bottom:16px}
+.champ-pool{font-size:48px;font-weight:800;background:linear-gradient(135deg,var(--gold),#f0c040);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.champ-pool-label{font-size:13px;color:var(--text2);margin-top:4px}
+.champ-info-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:16px 0}
+.champ-info-item{text-align:center;padding:12px 6px;background:var(--bg2);border-radius:12px}
+.champ-info-item .val{font-size:18px;font-weight:700}
+.champ-info-item .lbl{font-size:11px;color:var(--text2);margin-top:2px}
+.champ-q-card{background:var(--bg2);border-radius:14px;padding:16px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}
+.champ-q-asset{display:flex;align-items:center;gap:10px}
+.champ-q-emoji{font-size:28px}
+.champ-q-label{font-weight:600;font-size:15px}
+.champ-q-price{font-size:12px;color:var(--text2)}
+.champ-q-btns{display:flex;gap:6px}
+.champ-q-btns button{width:44px;height:44px;border-radius:12px;border:none;font-size:20px;cursor:pointer;transition:all .15s}
+.champ-q-btns .up{background:rgba(0,184,148,.15);color:#00b894}
+.champ-q-btns .down{background:rgba(255,107,107,.15);color:#ff6b6b}
+.champ-q-btns .up:hover{background:rgba(0,184,148,.3)}
+.champ-q-btns .down:hover{background:rgba(255,107,107,.3)}
+.champ-q-btns .selected{transform:scale(1.15);box-shadow:0 0 10px rgba(108,92,231,.3)}
+.champ-q-btns .up.selected{background:#00b894;color:#fff}
+.champ-q-btns .down.selected{background:#ff6b6b;color:#fff}
+.champ-q-result{font-size:22px;min-width:44px;text-align:center}
+.champ-lb{margin-top:16px}
+.champ-lb-row{display:flex;align-items:center;padding:10px 14px;background:var(--bg2);border-radius:10px;margin-bottom:6px}
+.champ-lb-place{width:30px;font-weight:700;font-size:16px}
+.champ-lb-name{flex:1;font-weight:500}
+.champ-lb-score{font-weight:700;color:var(--accent)}
+.champ-lb-row.me{background:rgba(108,92,231,.15);border:1px solid var(--accent)}
+
 /* Profile */
 .profile-header{text-align:center;padding:20px 0}
 .avatar{width:72px;height:72px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700;margin:0 auto 12px;color:#fff}
@@ -247,9 +277,9 @@ a{color:var(--accent2);text-decoration:none}
   </div>
   <div class="nav">
     <div class="nav-btn active" onclick="showTab('play')"><span class="icon">🎯</span>Играть</div>
-    <div class="nav-btn" onclick="showTab('top')"><span class="icon">🏆</span>Топ</div>
+    <div class="nav-btn" onclick="showTab('champ')"><span class="icon">🏆</span>Турнир</div>
     <div class="nav-btn" onclick="showTab('duels')"><span class="icon">⚔️</span>Дуэли</div>
-    <div class="nav-btn" onclick="showTab('raffle')"><span class="icon">🎫</span>Приз</div>
+    <div class="nav-btn" onclick="showTab('top')"><span class="icon">📊</span>Топ</div>
     <div class="nav-btn" onclick="showTab('profile')"><span class="icon">👤</span>Профиль</div>
   </div>
   <div id="buildMarker" class="nav-build" title="Если не совпадает с версией на сервере — открой приложение заново из бота">сборка 2.3.1</div>
@@ -563,12 +593,13 @@ function showTab(tab) {
   }
   currentTab = tab;
   document.querySelectorAll('.nav-btn').forEach((b, i) => {
-    b.classList.toggle('active', ['play','top','duels','raffle','profile'][i] === tab);
+    b.classList.toggle('active', ['play','champ','duels','top','profile'][i] === tab);
   });
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   stopLivePriceUpdates();
 
   if (tab === 'play') loadPlay();
+  else if (tab === 'champ') loadChampionship();
   else if (tab === 'top') loadLeaderboard();
   else if (tab === 'duels') loadDuels();
   else if (tab === 'raffle') loadRaffle();
@@ -1294,6 +1325,170 @@ async function addFriendFromLb(tid, btn) {
 }
 
 // --- RAFFLE ---
+
+// --- CHAMPIONSHIP ---
+
+async function loadChampionship() {
+  content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  const data = await api('/api/championship');
+  if (!data.ok) { content.innerHTML = '<div class="card">Ошибка загрузки</div>'; return; }
+
+  const c = data.championship;
+  const isP = data.isParticipant;
+
+  let html = `
+    <div class="champ-hero">
+      <div style="font-size:14px;color:var(--text2);margin-bottom:4px">Еженедельный чемпионат</div>
+      <div class="champ-pool">${c.prize_pool}⭐</div>
+      <div class="champ-pool-label">призовой пул · ${c.week_key}</div>
+    </div>
+    <div class="champ-info-grid">
+      <div class="champ-info-item"><div class="val">${c.participants}</div><div class="lbl">Участников</div></div>
+      <div class="champ-info-item"><div class="val">${c.entry_fee}⭐</div><div class="lbl">Вход</div></div>
+      <div class="champ-info-item"><div class="val">День ${data.dayNumber}/7</div><div class="lbl">Прогресс</div></div>
+    </div>`;
+
+  if (!isP) {
+    html += `
+      <div class="card" style="text-align:center">
+        <h3 style="margin-bottom:8px">Вступи в чемпионат!</h3>
+        <p style="color:var(--text2);font-size:13px;margin-bottom:16px">
+          Играй 7 дней, набирай очки, борись за призовой пул.<br>
+          🥇 50% пула · 🥈 25% · 🥉 15%
+        </p>
+        <button class="btn btn-accent" onclick="joinChampionship()">Вступить за ${c.entry_fee}⭐</button>
+      </div>`;
+  } else {
+    if (data.todayRound && data.todayQuestions) {
+      const allAnswered = data.todayQuestions.every(q => q.answered);
+      if (allAnswered) {
+        html += `<div class="card" style="text-align:center"><b>✅ Сегодняшний раунд пройден!</b></div>`;
+        html += renderChampResults(data.todayQuestions, data.todayRound.is_resolved);
+      } else {
+        html += `<div class="card" style="text-align:center"><b>📊 День ${data.dayNumber} — ответь на вопросы</b></div>`;
+        html += renderChampQuestions(data.todayQuestions);
+      }
+    } else if (!data.todayRound) {
+      html += `<div class="card" style="text-align:center">
+        <b>⏳ Раунд на сегодня скоро появится</b>
+        <p style="color:var(--text2);font-size:13px;margin-top:8px">Вопросы создаются автоматически. Загляни чуть позже!</p>
+      </div>`;
+    }
+  }
+
+  if (data.leaderboard && data.leaderboard.length > 0) {
+    html += `<div class="champ-lb"><h3 style="margin-bottom:10px">🏆 Таблица чемпионата</h3>`;
+    for (const e of data.leaderboard) {
+      const medal = e.place === 1 ? '🥇' : e.place === 2 ? '🥈' : e.place === 3 ? '🥉' : `${e.place}.`;
+      const isMe = currentUser && Number(e.user_id) === Number(currentUser.telegram_id);
+      html += `<div class="champ-lb-row${isMe ? ' me' : ''}">
+        <div class="champ-lb-place">${medal}</div>
+        <div class="champ-lb-name">${e.first_name || e.username || 'Аноним'}</div>
+        <div class="champ-lb-score">${e.total_score} очков</div>
+      </div>`;
+    }
+    html += `</div>`;
+  }
+
+  content.innerHTML = html;
+}
+
+function renderChampQuestions(questions) {
+  let html = '';
+  for (const q of questions) {
+    if (q.answered) {
+      html += `<div class="champ-q-card">
+        <div class="champ-q-asset">
+          <div class="champ-q-emoji">${q.emoji}</div>
+          <div><div class="champ-q-label">${q.label}</div>
+          <div class="champ-q-price">$${Number(q.price_at_start).toLocaleString('en', {maximumFractionDigits:2})}</div></div>
+        </div>
+        <div class="champ-q-result">${q.user_answer === 'up' ? '📈' : '📉'}</div>
+      </div>`;
+    } else {
+      html += `<div class="champ-q-card" id="champQ${q.index}">
+        <div class="champ-q-asset">
+          <div class="champ-q-emoji">${q.emoji}</div>
+          <div><div class="champ-q-label">${q.label}</div>
+          <div class="champ-q-price">$${Number(q.price_at_start).toLocaleString('en', {maximumFractionDigits:2})}</div></div>
+        </div>
+        <div class="champ-q-btns">
+          <button class="up" onclick="answerChamp(${q.index},'up')">📈</button>
+          <button class="down" onclick="answerChamp(${q.index},'down')">📉</button>
+        </div>
+      </div>`;
+    }
+  }
+  return html;
+}
+
+function renderChampResults(questions, isResolved) {
+  let html = '';
+  for (const q of questions) {
+    let result = '';
+    if (isResolved && q.is_correct !== null) {
+      result = q.is_correct ? '✅' : '❌';
+    } else {
+      result = q.user_answer === 'up' ? '📈' : '📉';
+    }
+    html += `<div class="champ-q-card">
+      <div class="champ-q-asset">
+        <div class="champ-q-emoji">${q.emoji}</div>
+        <div><div class="champ-q-label">${q.label}</div>
+        <div class="champ-q-price">$${Number(q.price_at_start).toLocaleString('en', {maximumFractionDigits:2})}${
+          isResolved && q.price_at_resolve ? ` → $${Number(q.price_at_resolve).toLocaleString('en', {maximumFractionDigits:2})}` : ''
+        }</div></div>
+      </div>
+      <div class="champ-q-result">${result}</div>
+    </div>`;
+  }
+  return html;
+}
+
+async function answerChamp(index, answer) {
+  const card = document.getElementById(`champQ${index}`);
+  if (!card) return;
+
+  const btns = card.querySelectorAll('.champ-q-btns button');
+  btns.forEach(b => b.disabled = true);
+  const selected = answer === 'up' ? btns[0] : btns[1];
+  selected.classList.add('selected');
+
+  const result = await apiPost('/api/championship/answer', { questionIndex: index, answer });
+  if (!result.ok) {
+    toast(result.error || 'Ошибка');
+    btns.forEach(b => b.disabled = false);
+    selected.classList.remove('selected');
+    return;
+  }
+
+  card.querySelector('.champ-q-btns').innerHTML = `<div class="champ-q-result">${answer === 'up' ? '📈' : '📉'}</div>`;
+
+  if (result.is_complete) {
+    toast('✅ Все ответы приняты! Результаты через час.');
+  }
+}
+
+async function joinChampionship() {
+  const result = await apiPost('/api/championship/join', {});
+  if (result.already) {
+    toast('Ты уже участвуешь!');
+    loadChampionship();
+    return;
+  }
+  if (result.invoiceUrl) {
+    tg.openInvoice(result.invoiceUrl, (status) => {
+      if (status === 'paid') {
+        toast('🏆 Добро пожаловать в чемпионат!');
+        setTimeout(() => loadChampionship(), 1500);
+      } else if (status === 'cancelled') {
+        toast('Оплата отменена');
+      }
+    });
+  } else {
+    toast(result.error || 'Ошибка');
+  }
+}
 
 async function loadRaffle() {
   content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';

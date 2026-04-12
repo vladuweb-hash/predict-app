@@ -672,6 +672,154 @@ app.get('/api/leaderboard', async (req, res) => {
   }
 });
 
+// --- Championship ---
+
+app.get('/api/championship', authMiddleware, async (req, res) => {
+  try {
+    const weekKey = db.getWeekKey();
+    const champ = await db.getOrCreateChampionship(weekKey);
+    const entries = await db.getChampionshipEntries(champ.id);
+    const isParticipant = entries.some(e => Number(e.user_id) === Number(req.tgUser.id));
+    const dayNumber = db.getChampionshipDayNumber();
+    const champRound = await db.getChampionshipRound(champ.id, dayNumber);
+
+    let todayAnswered = 0;
+    let todayTotal = 0;
+    let todayQuestions = null;
+    let userAnswers = [];
+
+    if (champRound) {
+      const questions = await db.getChampRoundQuestions(champRound.id);
+      todayTotal = questions.length;
+      if (isParticipant) {
+        userAnswers = await db.getUserChampAnswers(champRound.id, req.tgUser.id);
+        todayAnswered = userAnswers.length;
+        todayQuestions = questions.map((q, i) => {
+          const ua = userAnswers.find(a => a.question_index === i);
+          return {
+            index: i,
+            asset: q.asset,
+            label: q.asset_label,
+            emoji: q.asset_emoji,
+            price_at_start: q.price_at_start,
+            answered: !!ua,
+            user_answer: ua?.answer || null,
+            is_correct: ua?.is_correct ?? null,
+            correct_answer: champRound.is_resolved ? q.correct_answer : null,
+            price_at_resolve: champRound.is_resolved ? q.price_at_resolve : null,
+          };
+        });
+      }
+    }
+
+    res.json({
+      ok: true,
+      championship: {
+        id: champ.id,
+        week_key: champ.week_key,
+        entry_fee: champ.entry_fee,
+        prize_pool: champ.prize_pool,
+        status: champ.status,
+        min_players: champ.min_players,
+        commission_pct: champ.commission_pct,
+        participants: entries.length,
+      },
+      isParticipant,
+      dayNumber,
+      todayRound: champRound ? {
+        id: champRound.id,
+        is_resolved: champRound.is_resolved,
+        resolve_after: champRound.resolve_after,
+      } : null,
+      todayAnswered,
+      todayTotal,
+      todayQuestions,
+      leaderboard: entries.slice(0, 20).map((e, i) => ({
+        place: i + 1,
+        user_id: e.user_id,
+        username: e.username,
+        first_name: e.first_name,
+        total_score: e.total_score,
+        rounds_played: e.rounds_played,
+      })),
+    });
+  } catch (e) {
+    console.error('[Championship]', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/championship/join', authMiddleware, async (req, res) => {
+  try {
+    const weekKey = db.getWeekKey();
+    const champ = await db.getOrCreateChampionship(weekKey);
+
+    const already = await db.isChampionshipParticipant(champ.id, req.tgUser.id);
+    if (already) return res.json({ ok: true, already: true });
+
+    let invoiceUrl;
+    const title = `🏆 Чемпионат ${weekKey}`;
+    const desc = `Вход в еженедельный чемпионат. Призовой пул растёт с каждым участником!`;
+    const payload = `champ_${champ.id}_${req.tgUser.id}`;
+
+    if (bot && typeof bot.createInvoiceLink === 'function') {
+      invoiceUrl = await bot.createInvoiceLink(title, desc, payload, '', 'XTR',
+        [{ label: `Вход ${champ.entry_fee}⭐`, amount: champ.entry_fee }]);
+    } else {
+      invoiceUrl = await telegramBotApi('createInvoiceLink', {
+        title, description: desc, payload,
+        provider_token: '', currency: 'XTR',
+        prices: [{ label: `Вход ${champ.entry_fee}⭐`, amount: champ.entry_fee }],
+      });
+    }
+    res.json({ ok: true, invoiceUrl });
+  } catch (e) {
+    console.error('[Championship/join]', e);
+    res.status(500).json({ error: e.message || 'Не удалось создать счёт' });
+  }
+});
+
+app.post('/api/championship/answer', authMiddleware, async (req, res) => {
+  try {
+    const { questionIndex, answer } = req.body;
+    const weekKey = db.getWeekKey();
+    const champ = await db.getChampionship(weekKey);
+    if (!champ) return res.status(404).json({ error: 'Чемпионат не найден' });
+
+    const isP = await db.isChampionshipParticipant(champ.id, req.tgUser.id);
+    if (!isP) return res.status(403).json({ error: 'Ты не участник чемпионата' });
+
+    const dayNumber = db.getChampionshipDayNumber();
+    const champRound = await db.getChampionshipRound(champ.id, dayNumber);
+    if (!champRound) return res.status(404).json({ error: 'Раунд на сегодня ещё не создан' });
+    if (champRound.is_resolved) return res.status(400).json({ error: 'Раунд уже завершён' });
+
+    const result = await db.answerChampionshipQuestion(champ.id, champRound.id, req.tgUser.id, questionIndex, answer);
+    res.json(result);
+  } catch (e) {
+    console.error('[Championship/answer]', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/api/championship/history', authMiddleware, async (req, res) => {
+  try {
+    const history = await db.getChampionshipHistory(10);
+    const result = [];
+    for (const c of history) {
+      const entries = await db.getChampionshipEntries(c.id);
+      result.push({
+        ...c,
+        participants: entries.length,
+        top3: entries.slice(0, 3).map(e => ({ username: e.username, first_name: e.first_name, total_score: e.total_score })),
+      });
+    }
+    res.json({ ok: true, history: result });
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // --- Raffle ---
 
 app.get('/api/raffle', async (req, res) => {

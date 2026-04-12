@@ -1622,8 +1622,10 @@ function handleDeepLink() {
   if (!start.startsWith('duel_')) return;
   const code = start.slice(5);
   if (!code) return;
+  toast('Joining duel: ' + code);
   setTimeout(async () => {
     const data = await apiPost('/api/duel/join', { code });
+    console.log('[Duel join]', JSON.stringify(data));
     if (data.ok) {
       if (data.is_own) {
         showTab('duels');
@@ -1651,6 +1653,18 @@ function handleDeepLink() {
 
 auth().then(async () => {
   const deepStart = getTelegramStartParam();
+
+  // DEBUG: показать что получил фронтенд (убрать после отладки)
+  const _dbg = {
+    start_param: tg?.initDataUnsafe?.start_param ?? 'null',
+    query: window.location.search,
+    hash: window.location.hash?.slice(0, 80),
+    resolved: deepStart || '(empty)',
+  };
+  console.log('[DeepLink DEBUG]', JSON.stringify(_dbg));
+  if (deepStart) toast('Link: ' + deepStart);
+  else toast('No startapp param. URL: ' + window.location.href.slice(0, 100));
+
   const hasDuelLink = deepStart.startsWith('duel_');
   const hasFriendLink = deepStart.startsWith('friend_');
 

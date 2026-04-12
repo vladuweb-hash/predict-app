@@ -1291,7 +1291,8 @@ async function loadRatingWeekly() {
     html += `<div class="champ-lb">`;
     for (const e of data.board) {
       const medal = e.rank === 1 ? '🥇' : e.rank === 2 ? '🥈' : e.rank === 3 ? '🥉' : `${e.rank}.`;
-      html += `<div class="champ-lb-row${e.isMe ? ' me' : ''}">
+      const click = e.tid ? `onclick="showUserProfile(${e.tid})" style="cursor:pointer"` : '';
+      html += `<div class="champ-lb-row${e.isMe ? ' me' : ''}" ${click}>
         <div class="champ-lb-place">${medal}</div>
         <div class="champ-lb-name">${e.name}</div>
         <div class="champ-lb-score">${e.points} оч.</div>
@@ -1316,8 +1317,9 @@ async function loadRatingGlobal() {
 
   const rows = (data.board || []).map((row) => {
     const pts = coalesceLeaderboardRating(row);
+    const click = row.tid ? `onclick="showUserProfile(${row.tid})" style="cursor:pointer"` : '';
     return `
-    <div class="lb-row${row.isMe ? ' lb-me' : ''}" role="listitem">
+    <div class="lb-row${row.isMe ? ' lb-me' : ''}" role="listitem" ${click}>
       <div class="lb-row-head">
         <div class="lb-rank">${medal(row.rank)}</div>
         <div class="lb-name-wrap"><div class="lb-name">${escapeHtml(row.name)}</div></div>
@@ -1386,14 +1388,14 @@ async function loadFriendsTab() {
   } else {
     const sorted = friends.slice().sort((a, b) => (b.rating || 0) - (a.rating || 0));
     sorted.forEach((f, i) => {
-      html += `<div class="fr-row">
+      html += `<div class="fr-row" onclick="showUserProfile(${f.telegram_id})" style="cursor:pointer">
         <div class="fr-avatar" style="font-size:13px;font-weight:800">${i + 1}</div>
         <div class="fr-info">
           <div class="fr-name">${escapeHtml(f.name)}</div>
           <div class="fr-rating">⭐ ${f.rating || 0} очков</div>
         </div>
         <div class="fr-actions">
-          <button class="fr-btn" onclick="removeFriend(${f.telegram_id})" title="Удалить">✕</button>
+          <button class="fr-btn" onclick="event.stopPropagation();removeFriend(${f.telegram_id})" title="Удалить">✕</button>
         </div>
       </div>`;
     });
@@ -1471,6 +1473,51 @@ function shareFriendLink() {
   const text = '👥 Добавь меня в друзья в «Предскажи»!';
   const url = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
   window.open(url, '_blank');
+}
+
+let prevTab = 'rating';
+async function showUserProfile(tid) {
+  if (Number(tid) === Number(currentUser.telegram_id)) { showTab('profile'); return; }
+  prevTab = currentTab || 'rating';
+  content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  const data = await api(`/api/profile/${tid}`);
+  if (!data.ok) { content.innerHTML = '<div class="card">Профиль не найден</div>'; return; }
+
+  const u = data.user;
+  const achHtml = (data.achievementDefs || []).map(def => {
+    const unlocked = data.achievements?.some(a => a.type === def.type);
+    return `<div class="ach-item ${unlocked ? 'unlocked' : ''}" onclick="toast('${unlocked ? '✅' : '🔒'} ${def.title}: ${def.desc}')">
+      <div class="ach-icon">${def.emoji}</div>
+      <div class="ach-name">${def.title}</div>
+      <div style="font-size:9px;color:var(--text2);margin-top:2px">${def.desc}</div>
+    </div>`;
+  }).join('');
+
+  content.innerHTML = `
+    <div class="profile-header">
+      <div class="avatar">${(u.first_name || 'U')[0].toUpperCase()}</div>
+      <div class="profile-name">${u.first_name || 'Игрок'}</div>
+      ${u.username ? `<div style="color:var(--text2);font-size:13px">@${u.username}</div>` : ''}
+    </div>
+
+    <div class="card" style="text-align:center;padding:16px;margin-bottom:12px;border:1px solid rgba(255,215,0,.35);background:rgba(255,215,0,.08)">
+      <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Рейтинг</div>
+      <div style="font-size:28px;font-weight:800;color:var(--gold)">${data.rating ?? 0}</div>
+      ${data.leaderboardRank != null ? `<div style="font-size:13px;color:var(--text2);margin-top:8px">Место: <strong style="color:var(--text)">#${data.leaderboardRank}</strong> из ${data.totalPlayers || '—'}</div>` : ''}
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-item"><div class="val">${u.total_rounds || 0}</div><div class="lbl">Раундов</div></div>
+      <div class="stat-item"><div class="val">${u.total_5of5 || 0}</div><div class="lbl">5/5</div></div>
+      <div class="stat-item"><div class="val">${u.best_streak || 0}</div><div class="lbl">Макс серия</div></div>
+      <div class="stat-item"><div class="val">${u.duel_wins || 0}</div><div class="lbl">Побед</div></div>
+      <div class="stat-item"><div class="val">${u.duel_losses || 0}</div><div class="lbl">Поражений</div></div>
+    </div>
+
+    <div class="achievements-title">Достижения (${data.achievements?.length || 0}/${(data.achievementDefs || []).length})</div>
+    <div class="ach-grid">${achHtml}</div>
+
+    <button class="btn btn-outline" style="margin-top:20px" onclick="showTab(prevTab)">← Назад</button>`;
 }
 
 async function acceptFriendReq(friendId) {

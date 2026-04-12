@@ -608,6 +608,39 @@ app.get('/api/profile', authMiddleware, async (req, res) => {
   }
 });
 
+app.get('/api/profile/:id', async (req, res) => {
+  try {
+    const targetId = Number(req.params.id);
+    if (!targetId) return res.status(400).json({ error: 'Bad id' });
+
+    const user = await db.getUser(targetId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const achievements = await db.getAchievements(user.telegram_id);
+
+    res.json({
+      ok: true,
+      user: {
+        first_name: user.first_name,
+        username: user.username,
+        total_rounds: user.total_rounds,
+        total_5of5: user.total_5of5,
+        best_streak: user.best_streak,
+        duel_wins: user.duel_wins,
+        duel_losses: user.duel_losses,
+      },
+      achievements,
+      achievementDefs: db.ACHIEVEMENT_DEFS,
+      rating: db.computeLeaderboardRating(user),
+      leaderboardRank: await db.getLeaderboardRank(user.telegram_id),
+      totalPlayers: await db.getUsersCount(),
+    });
+  } catch (e) {
+    console.error('[PublicProfile]', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // --- Leaderboard (публичный JSON: без telegram_id; isMe только при валидном initData) ---
 
 function numLeaderboardScore(v) {
@@ -679,12 +712,12 @@ app.get('/api/leaderboard/weekly', authMiddleware, async (req, res) => {
     const { monday } = db.getWeekBounds();
     const weekKey = db.getWeekKey();
 
-    const board = raw.map((row, i) => ({
-      rank: i + 1,
-      name: leaderboardDisplayName(row),
-      points: row.total_pts,
-      isMe: Number(row.telegram_id) === myId,
-    }));
+    const board = raw.map((row, i) => {
+      const isMe = Number(row.telegram_id) === myId;
+      const entry = { rank: i + 1, name: leaderboardDisplayName(row), points: row.total_pts, isMe };
+      if (!isMe) entry.tid = Number(row.telegram_id);
+      return entry;
+    });
 
     const myRank = await db.getWeeklyRank(myId);
     const myEntry = raw.find(r => Number(r.telegram_id) === myId);

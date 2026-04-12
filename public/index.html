@@ -529,7 +529,13 @@ async function auth() {
     leaderboardRank: data.leaderboardRank,
     totalPlayers: data.totalPlayers,
   });
-  showTab('play');
+
+  const sp = getTelegramStartParam();
+  if (sp.startsWith('duel_') || sp.startsWith('friend_')) {
+    // deep link will handle navigation
+  } else {
+    showTab('play');
+  }
 }
 
 // --- Tabs ---
@@ -1584,6 +1590,7 @@ function handleDeepLink() {
     const friendId = start.slice(7);
     if (!friendId) return;
     setTimeout(async () => {
+      showTab('play');
       const r = await apiPost('/api/friends/add', { friendId: Number(friendId) });
       if (r.ok) {
         if (r.accepted) toast('Вы теперь друзья!');
@@ -1619,14 +1626,22 @@ function handleDeepLink() {
       playDuel(data.duel_id, mapped, startIdx);
     } else {
       toast(data.error || 'Не удалось войти в дуэль');
+      showTab('play');
     }
-  }, 350);
+  }, 500);
 }
 
 // --- Init ---
 
 auth().then(async () => {
-  handleDeepLink();
+  const deepStart = getTelegramStartParam();
+  const hasDuelLink = deepStart.startsWith('duel_');
+  const hasFriendLink = deepStart.startsWith('friend_');
+
+  if (hasDuelLink || hasFriendLink) {
+    handleDeepLink();
+  }
+
   try {
     const r = await fetch('/api/build');
     const b = await r.json();

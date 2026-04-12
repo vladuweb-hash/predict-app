@@ -252,7 +252,7 @@ a{color:var(--accent2);text-decoration:none}
     <div class="nav-btn" onclick="showTab('raffle')"><span class="icon">🎫</span>Приз</div>
     <div class="nav-btn" onclick="showTab('profile')"><span class="icon">👤</span>Профиль</div>
   </div>
-  <div id="buildMarker" class="nav-build" title="Если не совпадает с версией на сервере — открой приложение заново из бота">сборка 2.1.0</div>
+  <div id="buildMarker" class="nav-build" title="Если не совпадает с версией на сервере — открой приложение заново из бота">сборка 2.3.1</div>
 </div>
 <div class="toast" id="toast"></div>
 <div class="popup-overlay" id="premiumPopup">
@@ -266,7 +266,10 @@ a{color:var(--accent2);text-decoration:none}
 
 <script>
 const tg = window.Telegram?.WebApp;
-if (tg) tg.expand();
+if (tg) {
+  tg.expand();
+  tg.ready();
+}
 
 let currentUser = null;
 let botName = '';
@@ -493,12 +496,25 @@ async function apiPost(path, body) {
 
 // --- Auth ---
 
-/** Параметр запуска из Telegram (важнее, чем query — так работает ссылка t.me/bot?startapp=...) */
+/** Параметр запуска: initData → query tgWebAppStartParam / startapp → hash #tgWebAppStartParam (клиенты по-разному передают). */
 function getTelegramStartParam() {
+  const fromTgUnsafe = tg?.initDataUnsafe?.start_param != null ? String(tg.initDataUnsafe.start_param).trim() : '';
+  let fromInitData = '';
+  if (tg?.initData) {
+    try {
+      fromInitData = new URLSearchParams(tg.initData).get('start_param') || '';
+    } catch (e) { /* noop */ }
+  }
   const p = new URLSearchParams(window.location.search);
-  const fromUrl = p.get('tgWebAppStartParam') || p.get('startapp') || '';
-  const fromTg = tg?.initDataUnsafe?.start_param != null ? String(tg.initDataUnsafe.start_param) : '';
-  return (fromTg || fromUrl || '').trim();
+  const fromQuery = (p.get('tgWebAppStartParam') || p.get('startapp') || '').trim();
+  let fromHash = '';
+  if (window.location.hash && window.location.hash.length > 1) {
+    try {
+      const hp = new URLSearchParams(window.location.hash.slice(1));
+      fromHash = (hp.get('tgWebAppStartParam') || '').trim();
+    } catch (e) { /* noop */ }
+  }
+  return (fromTgUnsafe || fromInitData || fromQuery || fromHash || '').trim();
 }
 
 /** Реферал только число / ref_123 — не передаём duel_... в БД (referred_by BIGINT) */
@@ -1646,7 +1662,7 @@ auth().then(async () => {
     const r = await fetch('/api/build');
     const b = await r.json();
     const el = document.getElementById('buildMarker');
-    if (el && b.ok) el.textContent = 'клиент 2.3.0 · сервер v' + b.version;
+    if (el && b.ok) el.textContent = 'клиент 2.3.1 · сервер v' + b.version;
   } catch (e) { /* старый сервер без /api/build */ }
 });
 </script>

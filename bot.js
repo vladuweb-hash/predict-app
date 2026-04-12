@@ -44,14 +44,17 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
     `⚔️ Вызывай друзей на дуэли!\n\n` +
     `Нажми кнопку ниже, чтобы играть 👇`;
 
+  // В URL мини-приложения Telegram ожидает GET tgWebAppStartParam (а не startapp) — иначе клиент может обрезать параметр.
   if (param.startsWith('duel_')) {
     const sep = appUrl.includes('?') ? '&' : '?';
-    appUrl = appUrl + sep + 'startapp=' + encodeURIComponent(param);
+    const enc = encodeURIComponent(param);
+    appUrl = appUrl + sep + 'tgWebAppStartParam=' + enc + '&startapp=' + enc;
     btnText = '⚔️ Принять дуэль';
     greeting = `⚔️ Тебя вызвали на дуэль!\n\nНажми кнопку ниже, чтобы принять вызов 👇`;
   } else if (param.startsWith('friend_')) {
     const sep = appUrl.includes('?') ? '&' : '?';
-    appUrl = appUrl + sep + 'startapp=' + encodeURIComponent(param);
+    const enc = encodeURIComponent(param);
+    appUrl = appUrl + sep + 'tgWebAppStartParam=' + enc + '&startapp=' + enc;
     btnText = '👥 Открыть';
     greeting = `👥 Тебя приглашают в друзья!\n\nНажми кнопку ниже 👇`;
   }

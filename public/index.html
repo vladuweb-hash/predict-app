@@ -620,7 +620,7 @@ function renderStartScreen() {
       <button class="btn btn-accent" onclick="startRound()">Начать раунд</button>
     </div>
     <div class="card-sm" style="text-align:center">
-      <p style="font-size:13px;color:var(--text2)">🎫 5/5 = билет в розыгрыш 500⭐ + Premium 3 дня</p>
+      <p style="font-size:13px;color:var(--text2)">🎫 5/5 = билет в еженедельный розыгрыш</p>
     </div>
     <div class="card-sm" style="text-align:center;cursor:pointer" onclick="showTab('top')" role="button">
       <span style="font-size:14px;font-weight:600">🏆 Топ игроков</span>
@@ -638,7 +638,6 @@ function renderCooldown(info) {
       <div style="font-size:48px;margin-bottom:12px">⏳</div>
       <p style="color:var(--text2)">Следующий раунд доступен через</p>
       <div class="remaining" id="cdTimer">${remaining} мин</div>
-      ${!info?.premium ? '<p style="font-size:12px;color:var(--text2);margin-top:12px">⭐ Premium: раунд каждый час</p>' : ''}
     </div>`;
 }
 
@@ -1354,7 +1353,6 @@ async function loadProfile() {
       <div class="avatar">${(u.first_name || 'U')[0].toUpperCase()}</div>
       <div class="profile-name">${u.first_name || 'Игрок'}</div>
       ${u.username ? `<div style="color:var(--text2);font-size:13px">@${u.username}</div>` : ''}
-      ${premium ? '<div class="premium-badge">⭐ PREMIUM</div>' : ''}
     </div>
 
     <div class="card" style="text-align:center;padding:16px;margin-bottom:12px;border:1px solid rgba(255,215,0,.35);background:rgba(255,215,0,.08)">
@@ -1374,7 +1372,6 @@ async function loadProfile() {
       <div class="stat-item"><div class="val">${data.tickets || 0}</div><div class="lbl">Билетов</div></div>
     </div>
 
-    ${!premium ? `<button class="btn btn-accent" onclick="showPremiumPopup()">⭐ Получить Premium</button>` : ''}
 
     <div class="achievements-title">Достижения (${data.achievements?.length || 0}/${(data.achievementDefs || []).length})</div>
     <div class="ach-grid">${achHtml}</div>

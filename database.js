@@ -635,8 +635,7 @@ async function canStartRound(userId) {
   const user = await getUser(userId);
   if (!user) return { ok: false, error: 'User not found' };
 
-  const premium = isPremiumActive(user);
-  const cooldownMs = premium ? 3600000 : 7200000; // 1h or 2h
+  const cooldownMs = 900000; // 15 min for everyone
 
   const { rows } = await pool.query(
     'SELECT started_at FROM rounds WHERE user_id=$1 ORDER BY started_at DESC LIMIT 1', [userId]
@@ -645,10 +644,10 @@ async function canStartRound(userId) {
     const elapsed = Date.now() - new Date(rows[0].started_at).getTime();
     if (elapsed < cooldownMs) {
       const remaining = Math.ceil((cooldownMs - elapsed) / 60000);
-      return { ok: false, error: 'cooldown', remaining, premium };
+      return { ok: false, error: 'cooldown', remaining };
     }
   }
-  return { ok: true, premium };
+  return { ok: true };
 }
 
 async function createRound(userId) {
@@ -873,15 +872,6 @@ function generateInviteCode() {
 async function canCreateDuel(userId) {
   const user = await getUser(userId);
   if (!user) return { ok: false, error: 'User not found' };
-  const premium = isPremiumActive(user);
-
-  if (!premium) {
-    const today = new Date().toISOString().slice(0, 10);
-    const { rows } = await pool.query(
-      `SELECT COUNT(*) as c FROM duels WHERE creator_id=$1 AND started_at::date=$2::date`, [userId, today]
-    );
-    if (parseInt(rows[0].c) >= 3) return { ok: false, error: 'Лимит 3 дуэли в день. Premium — без ограничений!' };
-  }
   return { ok: true };
 }
 

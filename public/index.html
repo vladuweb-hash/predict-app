@@ -1360,8 +1360,8 @@ async function loadFriendsTab() {
   </div>`;
 
   html += `<div style="display:flex;gap:8px;margin-bottom:16px">
-    <button class="btn btn-accent" style="flex:1" onclick="shareInvite()">📨 Пригласить</button>
-    <button class="btn btn-outline" style="flex:1" onclick="shareFriendLink()">👥 Ссылка</button>
+    <button class="btn btn-accent" style="flex:1" onclick="shareInvite()">📨 Пригласить в игру</button>
+    <button class="btn btn-outline" style="flex:1" onclick="shareFriendLink()">👥 Добавить в друзья</button>
   </div>`;
 
   if (requests.length > 0) {
@@ -1433,7 +1433,6 @@ async function loadProfile() {
       <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Рейтинг (очки)</div>
       <div style="font-size:28px;font-weight:800;color:var(--gold)">${data.rating != null && data.rating !== '' ? data.rating : coalesceLeaderboardRating(u)}</div>
       ${data.leaderboardRank != null ? `<div style="font-size:13px;color:var(--text2);margin-top:8px">Место в общем топе: <strong style="color:var(--text)">#${data.leaderboardRank}</strong>${data.totalPlayers != null ? ` из ${data.totalPlayers}` : ''}</div>` : ''}
-      <div style="font-size:11px;color:var(--text2);margin-top:8px;line-height:1.35">5/5, серия, дуэли, раунды (до 250 в зачёт).</div>
       <button type="button" class="btn btn-outline" style="margin-top:12px" onclick="showTab('rating')">🏆 Рейтинг</button>
     </div>
 
@@ -1450,8 +1449,7 @@ async function loadProfile() {
     <div class="achievements-title">Достижения (${data.achievements?.length || 0}/${(data.achievementDefs || []).length})</div>
     <div class="ach-grid">${achHtml}</div>
 
-    <button class="btn btn-outline" style="margin-top:20px" onclick="shareInvite()">📨 Пригласить друга (+50 очков)</button>
-    <button class="btn btn-outline" style="margin-top:8px" onclick="showTab('play')">🎯 Играть</button>`;
+    <button class="btn btn-outline" style="margin-top:20px" onclick="showTab('play')">🎯 Играть</button>`;
 
   updateRatingStrip({
     rating: data.rating,

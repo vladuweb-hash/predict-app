@@ -1326,168 +1326,55 @@ async function addFriendFromLb(tid, btn) {
 
 // --- RAFFLE ---
 
-// --- CHAMPIONSHIP ---
+// --- WEEKLY RATING ---
 
 async function loadChampionship() {
   content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  const data = await api('/api/championship');
+  const data = await api('/api/leaderboard/weekly');
   if (!data.ok) { content.innerHTML = '<div class="card">Ошибка загрузки</div>'; return; }
 
-  const c = data.championship;
-  const isP = data.isParticipant;
+  const sunday = new Date(new Date(data.weekStart).getTime() + 7 * 24 * 3600000);
+  const now = new Date();
+  const diffMs = sunday - now;
+  const daysLeft = Math.max(0, Math.floor(diffMs / 86400000));
+  const hoursLeft = Math.max(0, Math.floor((diffMs % 86400000) / 3600000));
 
   let html = `
     <div class="champ-hero">
-      <div style="font-size:14px;color:var(--text2);margin-bottom:4px">Еженедельный чемпионат</div>
-      <div class="champ-pool">${c.prize_pool}⭐</div>
-      <div class="champ-pool-label">призовой пул · ${c.week_key}</div>
+      <div style="font-size:14px;color:var(--text2);margin-bottom:4px">Рейтинг недели</div>
+      <div class="champ-pool">${data.weekKey}</div>
+      <div class="champ-pool-label">
+        ${data.yourRank ? `Ты на ${data.yourRank} месте · ${data.yourPoints} очков` : 'Сыграй раунд чтобы попасть в рейтинг'}
+      </div>
+      <div style="margin-top:12px;font-size:13px;color:var(--text2)">⏳ До конца: ${daysLeft}д ${hoursLeft}ч</div>
     </div>
-    <div class="champ-info-grid">
-      <div class="champ-info-item"><div class="val">${c.participants}</div><div class="lbl">Участников</div></div>
-      <div class="champ-info-item"><div class="val">${c.entry_fee}⭐</div><div class="lbl">Вход</div></div>
-      <div class="champ-info-item"><div class="val">День ${data.dayNumber}/7</div><div class="lbl">Прогресс</div></div>
+    <div class="card" style="text-align:center;padding:14px;margin-bottom:16px">
+      <div style="font-size:13px;color:var(--text2)">
+        📈 Правильный ответ: <b>+20</b> · Участие: <b>+5</b> · Победа в дуэли: <b>+30</b>
+      </div>
     </div>`;
 
-  if (!isP) {
-    html += `
-      <div class="card" style="text-align:center">
-        <h3 style="margin-bottom:8px">Вступи в чемпионат!</h3>
-        <p style="color:var(--text2);font-size:13px;margin-bottom:16px">
-          Играй 7 дней, набирай очки, борись за призовой пул.<br>
-          🥇 50% пула · 🥈 25% · 🥉 15%
-        </p>
-        <button class="btn btn-accent" onclick="joinChampionship()">Вступить за ${c.entry_fee}⭐</button>
-      </div>`;
+  if (data.board.length === 0) {
+    html += `<div class="card" style="text-align:center">
+      <p style="color:var(--text2)">Пока никто не играл на этой неделе</p>
+      <button class="btn btn-accent" style="margin-top:12px" onclick="showTab('play')">🎯 Начать игру</button>
+    </div>`;
   } else {
-    if (data.todayRound && data.todayQuestions) {
-      const allAnswered = data.todayQuestions.every(q => q.answered);
-      if (allAnswered) {
-        html += `<div class="card" style="text-align:center"><b>✅ Сегодняшний раунд пройден!</b></div>`;
-        html += renderChampResults(data.todayQuestions, data.todayRound.is_resolved);
-      } else {
-        html += `<div class="card" style="text-align:center"><b>📊 День ${data.dayNumber} — ответь на вопросы</b></div>`;
-        html += renderChampQuestions(data.todayQuestions);
-      }
-    } else if (!data.todayRound) {
-      html += `<div class="card" style="text-align:center">
-        <b>⏳ Раунд на сегодня скоро появится</b>
-        <p style="color:var(--text2);font-size:13px;margin-top:8px">Вопросы создаются автоматически. Загляни чуть позже!</p>
-      </div>`;
-    }
-  }
-
-  if (data.leaderboard && data.leaderboard.length > 0) {
-    html += `<div class="champ-lb"><h3 style="margin-bottom:10px">🏆 Таблица чемпионата</h3>`;
-    for (const e of data.leaderboard) {
-      const medal = e.place === 1 ? '🥇' : e.place === 2 ? '🥈' : e.place === 3 ? '🥉' : `${e.place}.`;
-      const isMe = currentUser && Number(e.user_id) === Number(currentUser.telegram_id);
-      html += `<div class="champ-lb-row${isMe ? ' me' : ''}">
+    html += `<div class="champ-lb">`;
+    for (const e of data.board) {
+      const medal = e.rank === 1 ? '🥇' : e.rank === 2 ? '🥈' : e.rank === 3 ? '🥉' : `${e.rank}.`;
+      html += `<div class="champ-lb-row${e.isMe ? ' me' : ''}">
         <div class="champ-lb-place">${medal}</div>
-        <div class="champ-lb-name">${e.first_name || e.username || 'Аноним'}</div>
-        <div class="champ-lb-score">${e.total_score} очков</div>
+        <div class="champ-lb-name">${e.name}</div>
+        <div class="champ-lb-score">${e.points} оч.</div>
       </div>`;
     }
     html += `</div>`;
   }
 
+  html += `<button class="btn btn-outline" style="margin-top:16px;width:100%" onclick="showTab('top')">📊 Глобальный рейтинг</button>`;
+
   content.innerHTML = html;
-}
-
-function renderChampQuestions(questions) {
-  let html = '';
-  for (const q of questions) {
-    if (q.answered) {
-      html += `<div class="champ-q-card">
-        <div class="champ-q-asset">
-          <div class="champ-q-emoji">${q.emoji}</div>
-          <div><div class="champ-q-label">${q.label}</div>
-          <div class="champ-q-price">$${Number(q.price_at_start).toLocaleString('en', {maximumFractionDigits:2})}</div></div>
-        </div>
-        <div class="champ-q-result">${q.user_answer === 'up' ? '📈' : '📉'}</div>
-      </div>`;
-    } else {
-      html += `<div class="champ-q-card" id="champQ${q.index}">
-        <div class="champ-q-asset">
-          <div class="champ-q-emoji">${q.emoji}</div>
-          <div><div class="champ-q-label">${q.label}</div>
-          <div class="champ-q-price">$${Number(q.price_at_start).toLocaleString('en', {maximumFractionDigits:2})}</div></div>
-        </div>
-        <div class="champ-q-btns">
-          <button class="up" onclick="answerChamp(${q.index},'up')">📈</button>
-          <button class="down" onclick="answerChamp(${q.index},'down')">📉</button>
-        </div>
-      </div>`;
-    }
-  }
-  return html;
-}
-
-function renderChampResults(questions, isResolved) {
-  let html = '';
-  for (const q of questions) {
-    let result = '';
-    if (isResolved && q.is_correct !== null) {
-      result = q.is_correct ? '✅' : '❌';
-    } else {
-      result = q.user_answer === 'up' ? '📈' : '📉';
-    }
-    html += `<div class="champ-q-card">
-      <div class="champ-q-asset">
-        <div class="champ-q-emoji">${q.emoji}</div>
-        <div><div class="champ-q-label">${q.label}</div>
-        <div class="champ-q-price">$${Number(q.price_at_start).toLocaleString('en', {maximumFractionDigits:2})}${
-          isResolved && q.price_at_resolve ? ` → $${Number(q.price_at_resolve).toLocaleString('en', {maximumFractionDigits:2})}` : ''
-        }</div></div>
-      </div>
-      <div class="champ-q-result">${result}</div>
-    </div>`;
-  }
-  return html;
-}
-
-async function answerChamp(index, answer) {
-  const card = document.getElementById(`champQ${index}`);
-  if (!card) return;
-
-  const btns = card.querySelectorAll('.champ-q-btns button');
-  btns.forEach(b => b.disabled = true);
-  const selected = answer === 'up' ? btns[0] : btns[1];
-  selected.classList.add('selected');
-
-  const result = await apiPost('/api/championship/answer', { questionIndex: index, answer });
-  if (!result.ok) {
-    toast(result.error || 'Ошибка');
-    btns.forEach(b => b.disabled = false);
-    selected.classList.remove('selected');
-    return;
-  }
-
-  card.querySelector('.champ-q-btns').innerHTML = `<div class="champ-q-result">${answer === 'up' ? '📈' : '📉'}</div>`;
-
-  if (result.is_complete) {
-    toast('✅ Все ответы приняты! Результаты через час.');
-  }
-}
-
-async function joinChampionship() {
-  const result = await apiPost('/api/championship/join', {});
-  if (result.already) {
-    toast('Ты уже участвуешь!');
-    loadChampionship();
-    return;
-  }
-  if (result.invoiceUrl) {
-    tg.openInvoice(result.invoiceUrl, (status) => {
-      if (status === 'paid') {
-        toast('🏆 Добро пожаловать в чемпионат!');
-        setTimeout(() => loadChampionship(), 1500);
-      } else if (status === 'cancelled') {
-        toast('Оплата отменена');
-      }
-    });
-  } else {
-    toast(result.error || 'Ошибка');
-  }
 }
 
 async function loadRaffle() {

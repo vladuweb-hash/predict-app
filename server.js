@@ -672,6 +672,37 @@ app.get('/api/leaderboard', async (req, res) => {
   }
 });
 
+app.get('/api/leaderboard/weekly', authMiddleware, async (req, res) => {
+  try {
+    const raw = await db.getWeeklyLeaderboard(50);
+    const myId = Number(req.tgUser.id);
+    const { monday } = db.getWeekBounds();
+    const weekKey = db.getWeekKey();
+
+    const board = raw.map((row, i) => ({
+      rank: i + 1,
+      name: leaderboardDisplayName(row),
+      points: row.total_pts,
+      isMe: Number(row.telegram_id) === myId,
+    }));
+
+    const myRank = await db.getWeeklyRank(myId);
+    const myEntry = raw.find(r => Number(r.telegram_id) === myId);
+
+    res.json({
+      ok: true,
+      weekKey,
+      weekStart: monday.toISOString(),
+      board,
+      yourRank: myRank,
+      yourPoints: myEntry ? myEntry.total_pts : 0,
+    });
+  } catch (e) {
+    console.error('[WeeklyLB]', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // --- Championship ---
 
 app.get('/api/championship', authMiddleware, async (req, res) => {

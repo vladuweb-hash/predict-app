@@ -181,11 +181,8 @@ async function initDB() {
     CREATE TABLE IF NOT EXISTS championships (
       id SERIAL PRIMARY KEY,
       week_key TEXT UNIQUE NOT NULL,
-      entry_fee INTEGER NOT NULL DEFAULT 50,
-      prize_pool INTEGER NOT NULL DEFAULT 0,
-      commission_pct INTEGER NOT NULL DEFAULT 10,
-      min_players INTEGER NOT NULL DEFAULT 5,
       status TEXT NOT NULL DEFAULT 'open',
+      min_players INTEGER NOT NULL DEFAULT 2,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       finished_at TIMESTAMPTZ
     );
@@ -738,7 +735,7 @@ async function createRound(userId) {
     if (assets.length < 3) return { ok: false, error: 'Не удалось загрузить цены. Попробуй через минуту.' };
   }
 
-  const resolveAfter = new Date(Date.now() + 3600000); // +1 hour
+  const resolveAfter = new Date(Date.now() + 600000); // +10 min
 
   const { rows } = await pool.query(
     'INSERT INTO rounds (user_id, resolve_after) VALUES ($1, $2) RETURNING id, started_at',
@@ -960,7 +957,7 @@ async function createDuel(creatorId) {
   if (assets.length < 3) return { ok: false, error: 'Не удалось загрузить цены. Попробуй через минуту.' };
 
   const code = generateInviteCode();
-  const resolveAfter = new Date(Date.now() + 3600000);
+  const resolveAfter = new Date(Date.now() + 600000); // +10 min
 
   const { rows } = await pool.query(
     'INSERT INTO duels (invite_code, creator_id, resolve_after) VALUES ($1,$2,$3) RETURNING id',
@@ -1414,6 +1411,52 @@ async function getUsersCount() {
   return rows[0]?.c ?? 0;
 }
 
+function getWeekBounds() {
+  const now = new Date();
+  const day = now.getUTCDay();
+  const diff = day === 0 ? 6 : day - 1;
+  const monday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - diff, 0, 0, 0));
+  const sunday = new Date(monday.getTime() + 7 * 24 * 3600000);
+  return { monday, sunday };
+}
+
+async function getWeeklyLeaderboard(limit = 50) {
+  const { monday, sunday } = getWeekBounds();
+
+  const { rows } = await pool.query(
+    `WITH round_scores AS (
+       SELECT r.user_id, SUM(COALESCE(r.correct_count, 0) * 20 + (COALESCE(r.total_answered, 0) - COALESCE(r.correct_count, 0)) * 5)::int AS pts
+       FROM rounds r
+       WHERE r.is_resolved = true AND r.resolved_at >= $1 AND r.resolved_at < $2
+       GROUP BY r.user_id
+     ),
+     duel_scores AS (
+       SELECT d.winner_id AS user_id, COUNT(*)::int * 30 AS pts
+       FROM duels d
+       WHERE d.is_resolved = true AND d.resolved_at >= $1 AND d.resolved_at < $2 AND d.winner_id IS NOT NULL
+       GROUP BY d.winner_id
+     ),
+     combined AS (
+       SELECT COALESCE(r.user_id, d.user_id) AS user_id,
+              COALESCE(r.pts, 0) + COALESCE(d.pts, 0) AS total_pts
+       FROM round_scores r FULL OUTER JOIN duel_scores d ON r.user_id = d.user_id
+     )
+     SELECT c.user_id AS telegram_id, u.username, u.first_name, c.total_pts
+     FROM combined c JOIN users u ON u.telegram_id = c.user_id
+     WHERE c.total_pts > 0
+     ORDER BY c.total_pts DESC, u.telegram_id ASC
+     LIMIT $3`,
+    [monday.toISOString(), sunday.toISOString(), limit]
+  );
+  return rows;
+}
+
+async function getWeeklyRank(telegramId) {
+  const lb = await getWeeklyLeaderboard(1000);
+  const idx = lb.findIndex(r => Number(r.telegram_id) === Number(telegramId));
+  return idx >= 0 ? idx + 1 : null;
+}
+
 // --- Friends ---
 
 async function sendFriendRequest(fromId, toId) {
@@ -1550,10 +1593,6 @@ async function joinChampionship(championshipId, userId) {
   await pool.query(
     'INSERT INTO championship_entries (championship_id, user_id) VALUES ($1, $2)',
     [championshipId, userId]
-  );
-  await pool.query(
-    'UPDATE championships SET prize_pool = prize_pool + entry_fee WHERE id=$1',
-    [championshipId]
   );
   return { ok: true };
 }
@@ -1783,7 +1822,7 @@ module.exports = {
   getDuelQuestions, joinDuel, answerDuelQuestion, resolveDuel, getPendingDuels, getUserDuels, cancelDuel, cleanupStaleDuels,
   tryDuelMatchmaking, pollDuelMatchmaking, cancelDuelMatchmaking,
   addRaffleTicket, getRaffleTickets, getUserTickets, getRaffle, drawRaffle,
-  getAchievements, grantAchievement, checkAchievements, getLeaderboard, getLeaderboardRank, getUsersCount, computeLeaderboardRating, LB_ROUND_CAP,
+  getAchievements, grantAchievement, checkAchievements, getLeaderboard, getLeaderboardRank, getUsersCount, computeLeaderboardRating, LB_ROUND_CAP, getWeeklyLeaderboard, getWeeklyRank, getWeekBounds,
   sendFriendRequest, acceptFriendRequest, removeFriend, getFriends, getFriendRequests, areFriends,
   resetUser,
   getOrCreateChampionship, getChampionship, getChampionshipById, joinChampionship,

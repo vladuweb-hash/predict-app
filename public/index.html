@@ -187,6 +187,9 @@ a{color:var(--accent2);text-decoration:none}
 .champ-lb-name{flex:1;font-weight:500}
 .champ-lb-score{font-weight:700;color:var(--accent)}
 .champ-lb-row.me{background:rgba(108,92,231,.15);border:1px solid var(--accent)}
+.seg-wrap{display:flex;background:var(--bg);border-radius:12px;padding:3px;margin-bottom:16px}
+.seg-btn{flex:1;text-align:center;padding:10px 8px;border-radius:10px;font-size:14px;font-weight:600;color:var(--text2);cursor:pointer;transition:.2s}
+.seg-btn.active{background:var(--accent);color:#fff}
 
 /* Profile */
 .profile-header{text-align:center;padding:20px 0}
@@ -277,9 +280,9 @@ a{color:var(--accent2);text-decoration:none}
   </div>
   <div class="nav">
     <div class="nav-btn active" onclick="showTab('play')"><span class="icon">🎯</span>Играть</div>
-    <div class="nav-btn" onclick="showTab('champ')"><span class="icon">🏆</span>Турнир</div>
     <div class="nav-btn" onclick="showTab('duels')"><span class="icon">⚔️</span>Дуэли</div>
-    <div class="nav-btn" onclick="showTab('top')"><span class="icon">📊</span>Топ</div>
+    <div class="nav-btn" onclick="showTab('rating')"><span class="icon">🏆</span>Рейтинг</div>
+    <div class="nav-btn" onclick="showTab('friends')"><span class="icon">👥</span>Друзья</div>
     <div class="nav-btn" onclick="showTab('profile')"><span class="icon">👤</span>Профиль</div>
   </div>
   <div id="buildMarker" class="nav-build" title="Если не совпадает с версией на сервере — открой приложение заново из бота">сборка 2.3.1</div>
@@ -592,17 +595,17 @@ function showTab(tab) {
     apiPost('/api/duel/matchmaking/cancel', {}).catch(() => {});
   }
   currentTab = tab;
+  const tabs = ['play','duels','rating','friends','profile'];
   document.querySelectorAll('.nav-btn').forEach((b, i) => {
-    b.classList.toggle('active', ['play','champ','duels','top','profile'][i] === tab);
+    b.classList.toggle('active', tabs[i] === tab);
   });
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   stopLivePriceUpdates();
 
   if (tab === 'play') loadPlay();
-  else if (tab === 'champ') loadChampionship();
-  else if (tab === 'top') loadLeaderboard();
+  else if (tab === 'rating') loadRating();
   else if (tab === 'duels') loadDuels();
-  else if (tab === 'raffle') loadRaffle();
+  else if (tab === 'friends') loadFriendsTab();
   else if (tab === 'profile') loadProfile();
 }
 
@@ -657,11 +660,11 @@ function renderStartScreen() {
   content.innerHTML = `
     <div class="play-header">
       <h2>🎯 Предскажи</h2>
-      <div class="sub">5 активов — выше или ниже через час?</div>
+      <div class="sub">5 активов — выше или ниже через 10 минут?</div>
     </div>
     <div class="card" style="text-align:center;padding:40px 20px">
       <div style="font-size:64px;margin-bottom:16px">📈</div>
-      <p style="color:var(--text2);margin-bottom:20px">Угадай направление цены 5 активов.<br>Крипта, валюты, золото — результат через 1 час.</p>
+      <p style="color:var(--text2);margin-bottom:20px">Угадай направление цены 5 активов.<br>Крипта, валюты, золото — результат через 10 минут.</p>
       <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:24px">
         <span style="background:var(--bg);padding:5px 10px;border-radius:8px;font-size:12px">₿ BTC</span>
         <span style="background:var(--bg);padding:5px 10px;border-radius:8px;font-size:12px">◎ SOL</span>
@@ -672,12 +675,9 @@ function renderStartScreen() {
       </div>
       <button class="btn btn-accent" onclick="startRound()">Начать раунд</button>
     </div>
-    <div class="card-sm" style="text-align:center">
-      <p style="font-size:13px;color:var(--text2)">🎫 5/5 = билет в еженедельный розыгрыш</p>
-    </div>
-    <div class="card-sm" style="text-align:center;cursor:pointer" onclick="showTab('top')" role="button">
-      <span style="font-size:14px;font-weight:600">🏆 Топ игроков</span>
-      <p style="font-size:12px;color:var(--text2);margin-top:4px">Соревнуйся за первые места</p>
+    <div class="card-sm" style="text-align:center;cursor:pointer" onclick="showTab('rating')" role="button">
+      <span style="font-size:14px;font-weight:600">🏆 Рейтинг</span>
+      <p style="font-size:12px;color:var(--text2);margin-top:4px">Недельный и глобальный рейтинг</p>
     </div>`;
 }
 
@@ -732,7 +732,7 @@ async function renderQuestion(round, questions, idx) {
       <div class="asset-symbol">${(q.symbol || q.asset || '').toUpperCase()}/USD</div>
       <div class="asset-price">${priceFormatted}</div>
       <div class="chart-container"><canvas id="chart"></canvas></div>
-      <div style="color:var(--text2);font-size:13px;margin-bottom:8px">Через 1 час цена будет...</div>
+      <div style="color:var(--text2);font-size:13px;margin-bottom:8px">Через 10 минут цена будет...</div>
       <div class="predict-btns">
         <button class="btn btn-green" onclick="submitAnswer(${round.id}, ${idx}, 'up', this)">📈 Выше</button>
         <button class="btn btn-red" onclick="submitAnswer(${round.id}, ${idx}, 'down', this)">📉 Ниже</button>
@@ -882,7 +882,7 @@ function renderResults(round, questions) {
     <div class="results-header">
       <div style="font-size:48px;margin-bottom:8px">${is5of5 ? '🏆' : score >= 3 ? '👍' : '😔'}</div>
       <div class="results-score ${is5of5 ? 'perfect' : ''}">${score}/5</div>
-      <p style="color:var(--text2)">${is5of5 ? 'Идеально! +1 билет в розыгрыш!' : score >= 3 ? 'Неплохо!' : 'Попробуй ещё!'}</p>
+      <p style="color:var(--text2)">${is5of5 ? 'Идеально! 5 из 5!' : score >= 3 ? 'Неплохо!' : 'Попробуй ещё!'}</p>
     </div>
     ${rows}
     <button class="btn btn-accent" style="margin-top:16px" onclick="loadPlay()">Далее</button>`;
@@ -1021,7 +1021,7 @@ async function loadDuels() {
   content.innerHTML = `
     <div class="play-header">
       <h2>⚔️ Дуэли</h2>
-      <div class="sub">Одинаковые активы — кто угадает точнее. С друзьями: отправь ссылку из «Создать дуэль» — <strong>вводить код не нужно</strong>, друг просто открывает ссылку.</div>
+      <div class="sub">Вызови друга или найди случайного соперника — одинаковые активы, кто угадает точнее. Победа = +30 очков в рейтинг!</div>
     </div>
     <button class="btn btn-accent" style="margin-bottom:10px" onclick="createDuel()">Создать дуэль (пригласить по ссылке)</button>
     <button class="btn btn-outline" style="margin-bottom:10px" onclick="startRandomDuelMatch()">🎲 Случайный соперник</button>
@@ -1118,7 +1118,7 @@ async function createDuel() {
   const qJson = JSON.stringify(mappedQ).replace(/"/g, '&quot;');
   content.innerHTML = `
     <div class="play-header"><h2>⚔️ Дуэль создана!</h2>
-      <div class="sub" style="margin-top:8px">Друг открывает ссылку в Telegram — приложение само подключит его к дуэли. <strong>Код вводить не нужно.</strong></div>
+      <div class="sub" style="margin-top:8px">Отправь ссылку другу — он откроет её и сразу попадёт в дуэль.</div>
     </div>
     <div class="card" style="padding:16px;background:var(--bg2);border:1px solid rgba(162,155,254,.3);border-radius:16px;margin-bottom:12px">
       <p style="font-size:12px;color:var(--text2);margin-bottom:8px">Ссылка-приглашение</p>
@@ -1244,91 +1244,25 @@ async function openDuel(duelId) {
     </div>`;
 }
 
-// --- LEADERBOARD ---
+// --- RATING (weekly + global) ---
 
-async function loadLeaderboard() {
-  content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+let ratingMode = 'weekly';
 
-  const data = await api('/api/leaderboard');
-  if (!data.ok) { content.innerHTML = '<div class="card">Ошибка загрузки</div>'; return; }
-
-  const medal = (r) => (r === 1 ? '🥇' : r === 2 ? '🥈' : r === 3 ? '🥉' : String(r));
-
-  const rows = (data.board || []).map((row) => {
-    const pts = coalesceLeaderboardRating(row);
-    const addBtn = row.tid && !row.isMe
-      ? `<button class="fr-btn" onclick="event.stopPropagation();addFriendFromLb(${row.tid},this)" title="Добавить в друзья" style="flex-shrink:0;margin-left:6px">👥</button>`
-      : '';
-    return `
-    <div class="lb-row${row.isMe ? ' lb-me' : ''}" role="listitem">
-      <div class="lb-row-head">
-        <div class="lb-rank">${medal(row.rank)}</div>
-        <div class="lb-name-wrap">
-          <div class="lb-name">${escapeHtml(row.name)}</div>
-        </div>
-        <div class="lb-pts"><span class="lb-pts-num">${pts}</span><span class="lb-pts-lbl">очки</span></div>
-        ${addBtn}
-      </div>
-      <div class="lb-sub">${row.total_5of5} идеал. · серия ${row.best_streak} · ${row.duel_wins} побед · ${row.total_rounds} раундов</div>
-    </div>`;
-  }).join('');
-
-  const formula = data.ratingFormula;
-  const formulaLine = formula
-    ? `<div style="font-size:11px;color:var(--text2);line-height:1.45;margin-top:8px">${formula.note}</div>`
-    : '';
-
-  const rankNote = data.yourRank != null
-    ? `<div class="card lb-you ${data.inTop ? 'in' : 'out'}">
-         <div style="font-size:15px;font-weight:600">Твоё место: #${data.yourRank} <span style="color:var(--text2);font-weight:400">из ${data.totalPlayers || '—'}</span></div>
-         ${data.yourRating != null ? `<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:rgba(255,215,0,.12);border:1px solid rgba(255,215,0,.35)"><span style="font-size:22px;font-weight:800;color:var(--gold)">${data.yourRating}</span> <span style="font-size:12px;font-weight:600;color:var(--text2)">твои очки рейтинга</span></div>` : ''}
-         ${!data.inTop ? '<div style="font-size:12px;color:var(--text2);margin-top:6px">В списке ниже — только топ-50</div>' : ''}
-       </div>`
-    : '';
-
-  content.innerHTML = `
-    <div class="play-header">
-      <h2>🏆 Топ игроков</h2>
-      <div class="sub">Соревновательный рейтинг в очках: чем выше сумма — тем выше место. Идеальные раунды дают больше всего, дуэли и активность добавляют очки.</div>
-      ${formulaLine}
-    </div>
-    ${rankNote}
-    <div class="card" style="padding:12px 14px;margin-bottom:12px">
-      <div style="font-size:13px;color:var(--text2)">Игроков в базе: <strong style="color:var(--text)">${data.totalPlayers ?? '—'}</strong></div>
-    </div>
-    <div class="lb-list" role="list">${rows || '<p class="sub" style="text-align:center;padding:20px">Пока пусто — будь первым!</p>'}</div>
-    <button type="button" class="btn btn-outline" style="margin-top:12px" onclick="loadLeaderboard()">🔄 Обновить</button>`;
-
-  if (data.yourRating != null || data.yourRank != null) {
-    updateRatingStrip({
-      rating: data.yourRating,
-      leaderboardRank: data.yourRank,
-      totalPlayers: data.totalPlayers,
-    });
-  }
+function loadRating(mode) {
+  if (mode) ratingMode = mode;
+  if (ratingMode === 'weekly') loadRatingWeekly();
+  else loadRatingGlobal();
 }
 
-async function addFriendFromLb(tid, btn) {
-  btn.disabled = true;
-  const r = await apiPost('/api/friends/add', { friendId: tid });
-  if (r.ok) {
-    if (r.accepted) toast('Вы теперь друзья!');
-    else if (r.already) toast('Уже в друзьях');
-    else toast('Запрос отправлен!');
-    btn.textContent = '✓';
-    btn.style.color = 'var(--green)';
-    btn.style.borderColor = 'var(--green)';
-  } else {
-    toast(r.error || 'Ошибка');
-    btn.disabled = false;
-  }
+function ratingSegment() {
+  return `<div class="seg-wrap">
+    <div class="seg-btn ${ratingMode === 'weekly' ? 'active' : ''}" onclick="loadRating('weekly')">Неделя</div>
+    <div class="seg-btn ${ratingMode === 'global' ? 'active' : ''}" onclick="loadRating('global')">Всё время</div>
+  </div>`;
 }
 
-// --- RAFFLE ---
-
-// --- WEEKLY RATING ---
-
-async function loadChampionship() {
+async function loadRatingWeekly() {
+  ratingMode = 'weekly';
   content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
   const data = await api('/api/leaderboard/weekly');
   if (!data.ok) { content.innerHTML = '<div class="card">Ошибка загрузки</div>'; return; }
@@ -1339,19 +1273,13 @@ async function loadChampionship() {
   const daysLeft = Math.max(0, Math.floor(diffMs / 86400000));
   const hoursLeft = Math.max(0, Math.floor((diffMs % 86400000) / 3600000));
 
-  let html = `
+  let html = ratingSegment();
+  html += `
     <div class="champ-hero">
-      <div style="font-size:14px;color:var(--text2);margin-bottom:4px">Рейтинг недели</div>
-      <div class="champ-pool">${data.weekKey}</div>
       <div class="champ-pool-label">
-        ${data.yourRank ? `Ты на ${data.yourRank} месте · ${data.yourPoints} очков` : 'Сыграй раунд чтобы попасть в рейтинг'}
+        ${data.yourRank ? `Ты на <b>${data.yourRank}</b> месте · ${data.yourPoints} очков` : 'Сыграй раунд чтобы попасть в рейтинг'}
       </div>
-      <div style="margin-top:12px;font-size:13px;color:var(--text2)">⏳ До конца: ${daysLeft}д ${hoursLeft}ч</div>
-    </div>
-    <div class="card" style="text-align:center;padding:14px;margin-bottom:16px">
-      <div style="font-size:13px;color:var(--text2)">
-        📈 Правильный ответ: <b>+20</b> · Участие: <b>+5</b> · Победа в дуэли: <b>+30</b>
-      </div>
+      <div style="margin-top:8px;font-size:13px;color:var(--text2)">⏳ До конца недели: ${daysLeft}д ${hoursLeft}ч</div>
     </div>`;
 
   if (data.board.length === 0) {
@@ -1372,64 +1300,106 @@ async function loadChampionship() {
     html += `</div>`;
   }
 
-  html += `<button class="btn btn-outline" style="margin-top:16px;width:100%" onclick="showTab('top')">📊 Глобальный рейтинг</button>`;
-
+  html += `<div class="card" style="text-align:center;padding:12px;margin-top:16px">
+    <div style="font-size:12px;color:var(--text2)">📈 Ответ: <b>+5</b> · Верный: <b>+20</b> · Победа в дуэли: <b>+30</b></div>
+  </div>`;
   content.innerHTML = html;
 }
 
-async function loadRaffle() {
+async function loadRatingGlobal() {
+  ratingMode = 'global';
   content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-
-  const data = await api('/api/raffle');
+  const data = await api('/api/leaderboard');
   if (!data.ok) { content.innerHTML = '<div class="card">Ошибка загрузки</div>'; return; }
 
-  const profile = await api('/api/profile');
-  const myTickets = profile.tickets || 0;
+  const medal = (r) => (r === 1 ? '🥇' : r === 2 ? '🥈' : r === 3 ? '🥉' : String(r));
 
-  const now = new Date();
-  const sunday = new Date(now);
-  sunday.setDate(sunday.getDate() + (7 - sunday.getDay()) % 7);
-  sunday.setHours(20, 0, 0, 0);
-  if (sunday <= now) sunday.setDate(sunday.getDate() + 7);
+  const rows = (data.board || []).map((row) => {
+    const pts = coalesceLeaderboardRating(row);
+    return `
+    <div class="lb-row${row.isMe ? ' lb-me' : ''}" role="listitem">
+      <div class="lb-row-head">
+        <div class="lb-rank">${medal(row.rank)}</div>
+        <div class="lb-name-wrap"><div class="lb-name">${escapeHtml(row.name)}</div></div>
+        <div class="lb-pts"><span class="lb-pts-num">${pts}</span><span class="lb-pts-lbl">очки</span></div>
+      </div>
+      <div class="lb-sub">${row.total_5of5} идеал. · серия ${row.best_streak} · ${row.duel_wins} побед · ${row.total_rounds} раундов</div>
+    </div>`;
+  }).join('');
 
-  content.innerHTML = `
-    <div class="play-header">
-      <h2>🎫 Розыгрыш недели</h2>
-      <div class="sub">${data.weekKey}</div>
-    </div>
-    <div class="card raffle-prize">
-      <div style="font-size:13px;color:var(--text2);margin-bottom:8px">Главный приз</div>
-      <div class="stars">🎁</div>
-      <p style="color:var(--text2);font-size:13px;margin-top:8px">Случайный победитель получит Telegram Gift!</p>
-    </div>
-    <div class="raffle-stats">
-      <div class="raffle-stat"><div class="val">${myTickets}</div><div class="lbl">Твои билеты</div></div>
-      <div class="raffle-stat"><div class="val">${data.totalTickets}</div><div class="lbl">Всего билетов</div></div>
-      <div class="raffle-stat"><div class="val">${data.uniqueParticipants}</div><div class="lbl">Участников</div></div>
-      <div class="raffle-stat"><div class="val" id="raffleCountdown">—</div><div class="lbl">До розыгрыша</div></div>
-    </div>
-    <div class="card" style="text-align:center;padding:20px">
-      <p style="font-size:14px;font-weight:600;margin-bottom:8px">Как получить билеты?</p>
-      <p style="color:var(--text2);font-size:13px;line-height:1.5">
-        🎯 5/5 в раунде = 1 билет<br>
-        ⚔️ 2 победы в дуэлях = 1 билет
-      </p>
-    </div>
-    ${data.raffle?.winner_id ? `<div class="card" style="text-align:center;padding:20px;border:1px solid var(--gold)">
-      <p style="font-size:14px;font-weight:600">🏆 Победитель прошлой недели</p>
-      <p style="color:var(--gold);font-size:18px;margin-top:8px">ID: ${data.raffle.winner_id}</p>
-    </div>` : ''}`;
+  let html = ratingSegment();
 
-  function updateRaffleCountdown() {
-    const diff = sunday - new Date();
-    if (diff <= 0) { document.getElementById('raffleCountdown').textContent = 'Скоро!'; return; }
-    const d = Math.floor(diff / 86400000);
-    const h = Math.floor((diff % 86400000) / 3600000);
-    document.getElementById('raffleCountdown').textContent = d > 0 ? `${d}д ${h}ч` : `${h}ч`;
+  const rankNote = data.yourRank != null
+    ? `<div class="card lb-you ${data.inTop ? 'in' : 'out'}">
+         <div style="font-size:15px;font-weight:600">Твоё место: #${data.yourRank} <span style="color:var(--text2);font-weight:400">из ${data.totalPlayers || '—'}</span></div>
+         ${data.yourRating != null ? `<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:rgba(255,215,0,.12);border:1px solid rgba(255,215,0,.35)"><span style="font-size:22px;font-weight:800;color:var(--gold)">${data.yourRating}</span> <span style="font-size:12px;font-weight:600;color:var(--text2)">очков</span></div>` : ''}
+         ${!data.inTop ? '<div style="font-size:12px;color:var(--text2);margin-top:6px">Ниже — только топ-50</div>' : ''}
+       </div>`
+    : '';
+
+  html += rankNote;
+  html += `<div class="lb-list" role="list">${rows || '<p class="sub" style="text-align:center;padding:20px">Пока пусто — будь первым!</p>'}</div>`;
+
+  content.innerHTML = html;
+
+  if (data.yourRating != null || data.yourRank != null) {
+    updateRatingStrip({ rating: data.yourRating, leaderboardRank: data.yourRank, totalPlayers: data.totalPlayers });
   }
-  updateRaffleCountdown();
-  if (timerInterval) clearInterval(timerInterval);
-  timerInterval = setInterval(updateRaffleCountdown, 60000);
+}
+
+// --- FRIENDS TAB ---
+
+async function loadFriendsTab() {
+  content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  const data = await api('/api/friends');
+  if (!data.ok) { content.innerHTML = '<div class="card">Ошибка загрузки</div>'; return; }
+
+  const { friends, requests } = data;
+  let html = `<div class="play-header"><h2>👥 Друзья</h2>
+    <div class="sub">Добавляй друзей — следи за их результатами и вызывай на дуэль!</div>
+  </div>`;
+
+  html += `<div style="display:flex;gap:8px;margin-bottom:16px">
+    <button class="btn btn-accent" style="flex:1" onclick="shareInvite()">📨 Пригласить</button>
+    <button class="btn btn-outline" style="flex:1" onclick="shareFriendLink()">👥 Ссылка</button>
+  </div>`;
+
+  if (requests.length > 0) {
+    html += `<div class="fr-title">📩 Запросы <span class="fr-badge">${requests.length}</span></div>`;
+    requests.forEach(r => {
+      html += `<div class="fr-row">
+        <div class="fr-avatar">${(r.name || '?')[0].toUpperCase()}</div>
+        <div class="fr-info"><div class="fr-name">${escapeHtml(r.name)}</div></div>
+        <div class="fr-actions">
+          <button class="fr-btn accept" onclick="acceptFriendReq(${r.telegram_id})" title="Принять">✓</button>
+          <button class="fr-btn decline" onclick="removeFriend(${r.telegram_id})" title="Отклонить">✕</button>
+        </div>
+      </div>`;
+    });
+  }
+
+  html += `<div class="fr-title">Список друзей${friends.length ? ` (${friends.length})` : ''}</div>`;
+
+  if (friends.length === 0) {
+    html += `<div class="card-sm" style="text-align:center;color:var(--text2);font-size:13px;padding:20px">
+      Пока нет друзей. Пригласи кого-нибудь или сыграй дуэль!</div>`;
+  } else {
+    const sorted = friends.slice().sort((a, b) => (b.rating || 0) - (a.rating || 0));
+    sorted.forEach((f, i) => {
+      html += `<div class="fr-row">
+        <div class="fr-avatar" style="font-size:13px;font-weight:800">${i + 1}</div>
+        <div class="fr-info">
+          <div class="fr-name">${escapeHtml(f.name)}</div>
+          <div class="fr-rating">⭐ ${f.rating || 0} очков</div>
+        </div>
+        <div class="fr-actions">
+          <button class="fr-btn" onclick="removeFriend(${f.telegram_id})" title="Удалить">✕</button>
+        </div>
+      </div>`;
+    });
+  }
+
+  content.innerHTML = html;
 }
 
 // --- PROFILE ---
@@ -1463,8 +1433,8 @@ async function loadProfile() {
       <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Рейтинг (очки)</div>
       <div style="font-size:28px;font-weight:800;color:var(--gold)">${data.rating != null && data.rating !== '' ? data.rating : coalesceLeaderboardRating(u)}</div>
       ${data.leaderboardRank != null ? `<div style="font-size:13px;color:var(--text2);margin-top:8px">Место в общем топе: <strong style="color:var(--text)">#${data.leaderboardRank}</strong>${data.totalPlayers != null ? ` из ${data.totalPlayers}` : ''}</div>` : ''}
-      <div style="font-size:11px;color:var(--text2);margin-top:8px;line-height:1.35">Считается как в вкладке «Топ»: 5/5, серия, дуэли, раунды (до 250 в зачёт).</div>
-      <button type="button" class="btn btn-outline" style="margin-top:12px" onclick="showTab('top')">🏆 Таблица топ-50</button>
+      <div style="font-size:11px;color:var(--text2);margin-top:8px;line-height:1.35">5/5, серия, дуэли, раунды (до 250 в зачёт).</div>
+      <button type="button" class="btn btn-outline" style="margin-top:12px" onclick="showTab('rating')">🏆 Рейтинг</button>
     </div>
 
     <div class="stats-grid">
@@ -1473,18 +1443,14 @@ async function loadProfile() {
       <div class="stat-item"><div class="val">${u.best_streak || 0}</div><div class="lbl">Макс серия</div></div>
       <div class="stat-item"><div class="val">${u.duel_wins || 0}</div><div class="lbl">Побед</div></div>
       <div class="stat-item"><div class="val">${u.duel_losses || 0}</div><div class="lbl">Поражений</div></div>
-      <div class="stat-item"><div class="val">${data.tickets || 0}</div><div class="lbl">Билетов</div></div>
+      <div class="stat-item"><div class="val">${data.friends?.length || 0}</div><div class="lbl">Друзей</div></div>
     </div>
 
 
     <div class="achievements-title">Достижения (${data.achievements?.length || 0}/${(data.achievementDefs || []).length})</div>
     <div class="ach-grid">${achHtml}</div>
 
-    <div id="friendsSection" class="fr-section"></div>
-
-    <div class="sub" style="margin-top:16px;text-align:center;opacity:0.9">За друга, который доиграет первый раунд по твоей ссылке, ты получишь +1 билет в розыгрыш недели.</div>
-    <button class="btn btn-outline" style="margin-top:20px" onclick="shareInvite()">📨 Пригласить друга</button>
-    <button class="btn btn-outline" style="margin-top:8px" onclick="shareFriendLink()">👥 Ссылка «Добавить в друзья»</button>
+    <button class="btn btn-outline" style="margin-top:20px" onclick="shareInvite()">📨 Пригласить друга (+50 очков)</button>
     <button class="btn btn-outline" style="margin-top:8px" onclick="showTab('play')">🎯 Играть</button>`;
 
   updateRatingStrip({
@@ -1492,12 +1458,10 @@ async function loadProfile() {
     leaderboardRank: data.leaderboardRank,
     totalPlayers: data.totalPlayers,
   });
-
-  loadFriendsSection();
 }
 
 function shareInvite() {
-  const text = '🎯 Предскажи курсы крипты, валют и золота — выигрывай подарки! За первый раунд друга — +1 билет тебе в розыгрыш.';
+  const text = '🎯 Предскажи курсы крипты, валют и золота — соревнуйся в рейтинге! Заходи и играй:';
   const name = botName || 'your_bot';
   const link = `https://t.me/${name}/Predict?startapp=ref_${currentUser.telegram_id}`;
   const url = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
@@ -1512,58 +1476,11 @@ function shareFriendLink() {
   window.open(url, '_blank');
 }
 
-async function loadFriendsSection() {
-  const el = document.getElementById('friendsSection');
-  if (!el) return;
-  const data = await api('/api/friends');
-  if (!data.ok) { el.innerHTML = ''; return; }
-
-  const { friends, requests } = data;
-  let html = '';
-
-  if (requests.length > 0) {
-    html += `<div class="fr-title">📩 Запросы в друзья <span class="fr-badge">${requests.length}</span></div>`;
-    requests.forEach(r => {
-      html += `<div class="fr-row">
-        <div class="fr-avatar">${(r.name || '?')[0].toUpperCase()}</div>
-        <div class="fr-info"><div class="fr-name">${escapeHtml(r.name)}</div></div>
-        <div class="fr-actions">
-          <button class="fr-btn accept" onclick="acceptFriendReq(${r.telegram_id})" title="Принять">✓</button>
-          <button class="fr-btn decline" onclick="removeFriend(${r.telegram_id})" title="Отклонить">✕</button>
-        </div>
-      </div>`;
-    });
-  }
-
-  html += `<div class="fr-title">👥 Друзья${friends.length ? ` (${friends.length})` : ''}</div>`;
-
-  if (friends.length === 0) {
-    html += `<div class="card-sm" style="text-align:center;color:var(--text2);font-size:13px;padding:20px">
-      Пока нет друзей. Отправь ссылку «Добавить в друзья» или сыграй дуэль!</div>`;
-  } else {
-    const sorted = friends.slice().sort((a, b) => (b.rating || 0) - (a.rating || 0));
-    sorted.forEach((f, i) => {
-      html += `<div class="fr-row">
-        <div class="fr-avatar" style="font-size:13px;font-weight:800">${i + 1}</div>
-        <div class="fr-info">
-          <div class="fr-name">${escapeHtml(f.name)}</div>
-          <div class="fr-rating">⭐ ${f.rating || 0} очков</div>
-        </div>
-        <div class="fr-actions">
-          <button class="fr-btn" onclick="removeFriend(${f.telegram_id})" title="Удалить">✕</button>
-        </div>
-      </div>`;
-    });
-  }
-
-  el.innerHTML = html;
-}
-
 async function acceptFriendReq(friendId) {
   const r = await apiPost('/api/friends/accept', { friendId });
   if (r.ok) {
     toast('Друг добавлен!');
-    loadFriendsSection();
+    if (currentTab === 'friends') loadFriendsTab();
   } else {
     toast(r.error || 'Ошибка');
   }
@@ -1571,9 +1488,7 @@ async function acceptFriendReq(friendId) {
 
 async function removeFriend(friendId) {
   const r = await apiPost('/api/friends/remove', { friendId });
-  if (r.ok) {
-    loadFriendsSection();
-  }
+  if (r.ok && currentTab === 'friends') loadFriendsTab();
 }
 
 function showPremiumPopup() { $('premiumPopup').classList.add('show'); }
@@ -1688,13 +1603,13 @@ function handleDeepLink() {
     const friendId = start.slice(7);
     if (!friendId) return;
     setTimeout(async () => {
-      showTab('play');
+      showTab('friends');
       const r = await apiPost('/api/friends/add', { friendId: Number(friendId) });
       if (r.ok) {
         if (r.accepted) toast('Вы теперь друзья!');
         else if (r.already) toast('Уже в друзьях');
         else toast('Запрос дружбы отправлен!');
-        showTab('profile');
+        loadFriendsTab();
       } else {
         toast(r.error || 'Ошибка');
       }

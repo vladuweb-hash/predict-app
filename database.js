@@ -267,6 +267,7 @@ async function initDB() {
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS strategy TEXT DEFAULT ''",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_frame TEXT DEFAULT ''",
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS bonus_points INTEGER DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS last_reminder_at TIMESTAMPTZ',
     'ALTER TABLE duels ADD COLUMN IF NOT EXISTS stake INTEGER DEFAULT 0',
     'ALTER TABLE duels ADD COLUMN IF NOT EXISTS stake_paid BOOLEAN DEFAULT false',
   ];
@@ -701,6 +702,7 @@ async function getInactiveUsers(hoursAgo) {
        AND chat_id IS NOT NULL
        AND last_active_at < NOW() - INTERVAL '1 hour' * $1
        AND last_active_at > NOW() - INTERVAL '1 hour' * ($1 + 24)
+       AND (last_reminder_at IS NULL OR last_reminder_at < NOW() - INTERVAL '23 hours')
      ORDER BY last_active_at ASC`,
     [hoursAgo]
   );

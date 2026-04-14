@@ -272,7 +272,10 @@ async function sendReminders() {
       for (const u of users) {
         const dmId = u.chat_id || u.telegram_id;
         if (!dmId) continue;
-        try { await _bot.sendMessage(dmId, rem.text, btn); } catch (e) {}
+        try {
+          await _bot.sendMessage(dmId, rem.text, btn);
+          await db.pool.query('UPDATE users SET last_reminder_at=NOW() WHERE telegram_id=$1', [u.telegram_id]);
+        } catch (e) {}
       }
       if (users.length > 0) console.log(`[Reminder] Sent ${rem.hours}h reminder to ${users.length} user(s)`);
     } catch (e) {
